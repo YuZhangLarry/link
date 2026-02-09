@@ -54,6 +54,31 @@ type EmbeddingConfig struct {
 	BaseURL  string // API Base URL
 }
 
+// TenantConfig 租户配置
+type TenantConfig struct {
+	EnableMultiTenant      bool   // 是否启用多租户
+	EnableCrossTenantAccess bool   // 是否启用跨租户访问
+	DefaultStorageQuota    int64  // 默认存储配额 (bytes)
+}
+
+// ServerConfig HTTP服务配置
+type ServerConfig struct {
+	Port string // HTTP服务端口
+	Mode string // 运行模式: debug/release
+	Host string // 监听地址
+}
+
+// Config 总配置
+type Config struct {
+	Database *DatabaseConfig
+	JWT      *JWTConfig
+	Tenant   *TenantConfig
+	Chat     *ChatConfig
+	Search   *SearchConfig
+	Embedding *EmbeddingConfig
+	Server   *ServerConfig
+}
+
 // LoadDatabaseConfig 从环境变量加载数据库配置
 func LoadDatabaseConfig() *DatabaseConfig {
 	// 尝试加载 .env 文件
@@ -143,6 +168,47 @@ func LoadEmbeddingConfig() *EmbeddingConfig {
 	}
 }
 
+// LoadTenantConfig 从环境变量加载租户配置
+func LoadTenantConfig() *TenantConfig {
+	// 尝试加载 .env 文件
+	projectRoot, _ := os.Getwd()
+	envPath := filepath.Join(projectRoot, ".env")
+	_ = godotenv.Load(envPath)
+
+	return &TenantConfig{
+		EnableMultiTenant:      getEnvAsBool("TENANT_ENABLED", false),
+		EnableCrossTenantAccess: getEnvAsBool("TENANT_CROSS_ACCESS", false),
+		DefaultStorageQuota:    getEnvAsInt64("TENANT_DEFAULT_QUOTA", 10*1024*1024*1024), // 10GB
+	}
+}
+
+// LoadServerConfig 从环境变量加载服务配置
+func LoadServerConfig() *ServerConfig {
+	// 尝试加载 .env 文件
+	projectRoot, _ := os.Getwd()
+	envPath := filepath.Join(projectRoot, ".env")
+	_ = godotenv.Load(envPath)
+
+	return &ServerConfig{
+		Port: getEnv("SERVER_PORT", "8080"),
+		Mode: getEnv("GIN_MODE", "debug"),
+		Host: getEnv("SERVER_HOST", "0.0.0.0"),
+	}
+}
+
+// LoadConfig 加载完整配置
+func LoadConfig() *Config {
+	return &Config{
+		Database:  LoadDatabaseConfig(),
+		JWT:       LoadJWTConfig(),
+		Tenant:    LoadTenantConfig(),
+		Chat:      LoadChatConfig(),
+		Search:    LoadSearchConfig(),
+		Embedding: LoadEmbeddingConfig(),
+		Server:    LoadServerConfig(),
+	}
+}
+
 func getEnvAsInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		var intValue int
@@ -151,6 +217,24 @@ func getEnvAsInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+func getEnvAsInt64(key string, defaultValue int64) int64 {
+	if value := os.Getenv(key); value != "" {
+		var intValue int64
+		if _, err := fmt.Sscanf(value, "%d", &intValue); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value == "true" || value == "1" || value == "yes"
 }
 
 // GetDSN 获取数据库连接字符串

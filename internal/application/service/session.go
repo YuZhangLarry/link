@@ -8,7 +8,7 @@ import (
 	"link/internal/types/interfaces"
 )
 
-// SessionService 会话服务实现
+// SessionService 会话服务实现 - 多租户版本
 type SessionService struct {
 	sessionRepo interfaces.SessionRepository
 }
@@ -22,36 +22,8 @@ func NewSessionService(sessionRepo interfaces.SessionRepository) interfaces.Sess
 
 // CreateSession 创建会话
 func (s *SessionService) CreateSession(ctx context.Context, userID int64, req *types.CreateSessionRequest) (*types.SessionResponse, error) {
-	// 设置默认值
-	if req.Model == "" {
-		req.Model = "gpt-3.5-turbo"
-	}
-	if req.MaxRounds == 0 {
-		req.MaxRounds = 10
-	}
-	if req.KeywordThreshold == 0 {
-		req.KeywordThreshold = 0.5
-	}
-	if req.VectorThreshold == 0 {
-		req.VectorThreshold = 0.5
-	}
-
-	// 创建会话实体
-	session := &types.SessionEntity{
-		UserID:           userID,
-		KBID:             req.KBID,
-		Title:            req.Title,
-		Description:      req.Description,
-		Model:            req.Model,
-		MaxRounds:        req.MaxRounds,
-		EnableRewrite:    req.EnableRewrite,
-		KeywordThreshold: req.KeywordThreshold,
-		VectorThreshold:  req.VectorThreshold,
-		Status:           1, // 默认正常状态
-	}
-
-	// 保存到数据库
-	err := s.sessionRepo.Create(ctx, session)
+	// 调用仓储创建会话（repository会处理默认值）
+	session, err := s.sessionRepo.Create(ctx, userID, req)
 	if err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
@@ -60,7 +32,23 @@ func (s *SessionService) CreateSession(ctx context.Context, userID int64, req *t
 }
 
 // GetSessionByID 根据ID获取会话
-func (s *SessionService) GetSessionByID(ctx context.Context, id int64) (*types.SessionResponse, error) {
+func (s *SessionService) GetSessionByID(ctx context.Context, id string) (*types.SessionResponse, error) {
+	// 从上下文获取用户ID，进行权限验证
+	userID, ok := ctx.Value("user_id").(int64)
+	if ok && userID > 0 {
+		// 验证会话是否属于该用户
+		session, err := s.sessionRepo.FindByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		// 检查会话是否属于当前用户
+		if session.UserID != userID {
+			return nil, fmt.Errorf("无权访问该会话")
+		}
+		return s.toSessionResponse(session), nil
+	}
+
+	// 如果没有 user_id，则直接查询（兼容旧逻辑）
 	session, err := s.sessionRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -70,7 +58,7 @@ func (s *SessionService) GetSessionByID(ctx context.Context, id int64) (*types.S
 }
 
 // GetSessionDetail 获取会话详情（包含消息）
-func (s *SessionService) GetSessionDetail(ctx context.Context, id int64) (*types.SessionDetailResponse, error) {
+func (s *SessionService) GetSessionDetail(ctx context.Context, id string) (*types.SessionDetailResponse, error) {
 	session, err := s.sessionRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -79,7 +67,7 @@ func (s *SessionService) GetSessionDetail(ctx context.Context, id int64) (*types
 	return &types.SessionDetailResponse{
 		SessionResponse: *s.toSessionResponse(session),
 		// 消息列表需要通过 MessageService 获取
-		Messages: []types.MessageResponse{},
+		Messages: []*types.MessageResponse{},
 	}, nil
 }
 
@@ -95,15 +83,21 @@ func (s *SessionService) ListSessions(ctx context.Context, req *types.ListSessio
 		size = 20
 	}
 
+	// 从上下文获取用户ID
+	userID, ok := ctx.Value("user_id").(int64)
+	if !ok || userID == 0 {
+		return nil, fmt.Errorf("未找到用户ID")
+	}
+
 	var sessions []*types.SessionEntity
 	var total int64
 	var err error
 
 	// 根据是否筛选状态选择不同的查询方法
 	if req.Status != nil {
-		sessions, total, err = s.sessionRepo.FindByUserIDAndStatus(ctx, req.UserID, *req.Status, page, size)
+		sessions, total, err = s.sessionRepo.FindByUserIDAndStatus(ctx, userID, *req.Status, page, size)
 	} else {
-		sessions, total, err = s.sessionRepo.FindByUserID(ctx, req.UserID, page, size)
+		sessions, total, err = s.sessionRepo.FindByUserID(ctx, userID, page, size)
 	}
 
 	if err != nil {
@@ -111,9 +105,9 @@ func (s *SessionService) ListSessions(ctx context.Context, req *types.ListSessio
 	}
 
 	// 转换为响应格式
-	sessionResponses := make([]types.SessionResponse, 0, len(sessions))
+	sessionResponses := make([]*types.SessionResponse, 0, len(sessions))
 	for _, session := range sessions {
-		sessionResponses = append(sessionResponses, *s.toSessionResponse(session))
+		sessionResponses = append(sessionResponses, s.toSessionResponse(session))
 	}
 
 	return &types.SessionListResponse{
@@ -125,36 +119,24 @@ func (s *SessionService) ListSessions(ctx context.Context, req *types.ListSessio
 }
 
 // UpdateSession 更新会话
-func (s *SessionService) UpdateSession(ctx context.Context, id int64, req *types.UpdateSessionRequest) (*types.SessionResponse, error) {
-	// 查找会话
+func (s *SessionService) UpdateSession(ctx context.Context, id string, req *types.UpdateSessionRequest) (*types.SessionResponse, error) {
+	// 更新
+	err := s.sessionRepo.Update(ctx, id, req)
+	if err != nil {
+		return nil, fmt.Errorf("更新会话失败: %w", err)
+	}
+
+	// 重新获取更新后的会话
 	session, err := s.sessionRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-
-	// 更新字段
-	session.Title = req.Title
-	session.Description = req.Description
-	session.Model = req.Model
-	session.MaxRounds = req.MaxRounds
-	session.EnableRewrite = req.EnableRewrite
-	session.KeywordThreshold = req.KeywordThreshold
-	session.VectorThreshold = req.VectorThreshold
-	if req.Status != nil {
-		session.Status = *req.Status
-	}
-
-	// 保存更新
-	err = s.sessionRepo.Update(ctx, session)
-	if err != nil {
-		return nil, fmt.Errorf("更新会话失败: %w", err)
 	}
 
 	return s.toSessionResponse(session), nil
 }
 
 // DeleteSession 删除会话
-func (s *SessionService) DeleteSession(ctx context.Context, id int64) error {
+func (s *SessionService) DeleteSession(ctx context.Context, id string) error {
 	err := s.sessionRepo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("删除会话失败: %w", err)
@@ -163,15 +145,14 @@ func (s *SessionService) DeleteSession(ctx context.Context, id int64) error {
 }
 
 // ArchiveSession 归档会话
-func (s *SessionService) ArchiveSession(ctx context.Context, id int64) error {
-	session, err := s.sessionRepo.FindByID(ctx, id)
-	if err != nil {
-		return err
+func (s *SessionService) ArchiveSession(ctx context.Context, id string) error {
+	// 归档状态为 0
+	status := int8(0)
+	req := &types.UpdateSessionRequest{
+		Status: &status,
 	}
 
-	session.Status = 0 // 归档状态
-
-	err = s.sessionRepo.Update(ctx, session)
+	err := s.sessionRepo.Update(ctx, id, req)
 	if err != nil {
 		return fmt.Errorf("归档会话失败: %w", err)
 	}
@@ -180,15 +161,14 @@ func (s *SessionService) ArchiveSession(ctx context.Context, id int64) error {
 }
 
 // ActivateSession 激活会话
-func (s *SessionService) ActivateSession(ctx context.Context, id int64) error {
-	session, err := s.sessionRepo.FindByID(ctx, id)
-	if err != nil {
-		return err
+func (s *SessionService) ActivateSession(ctx context.Context, id string) error {
+	// 正常状态为 1
+	status := int8(1)
+	req := &types.UpdateSessionRequest{
+		Status: &status,
 	}
 
-	session.Status = 1 // 正常状态
-
-	err = s.sessionRepo.Update(ctx, session)
+	err := s.sessionRepo.Update(ctx, id, req)
 	if err != nil {
 		return fmt.Errorf("激活会话失败: %w", err)
 	}
@@ -200,15 +180,13 @@ func (s *SessionService) ActivateSession(ctx context.Context, id int64) error {
 func (s *SessionService) toSessionResponse(session *types.SessionEntity) *types.SessionResponse {
 	return &types.SessionResponse{
 		ID:              session.ID,
+		TenantID:        session.TenantID,
 		UserID:          session.UserID,
-		KBID:            session.KBID,
 		Title:           session.Title,
 		Description:     session.Description,
-		Model:           session.Model,
+		KBID:            session.KBID,
 		MaxRounds:       session.MaxRounds,
 		EnableRewrite:   session.EnableRewrite,
-		KeywordThreshold: session.KeywordThreshold,
-		VectorThreshold:  session.VectorThreshold,
 		MessageCount:    session.MessageCount,
 		Status:          session.Status,
 		CreatedAt:       session.CreatedAt,

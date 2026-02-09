@@ -64,12 +64,12 @@ func (h *MessageHandler) CreateMessage(c *gin.Context) {
 // @Tags 消息
 // @Accept json
 // @Produce json
-// @Param id path int true "消息ID"
+// @Param id path string true "消息ID"
 // @Success 200 {object} Response{data=types.MessageResponse}
 // @Router /api/v1/messages/{id} [get]
 func (h *MessageHandler) GetMessageByID(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -103,7 +103,7 @@ func (h *MessageHandler) GetMessageByID(c *gin.Context) {
 // @Tags 消息
 // @Accept json
 // @Produce json
-// @Param chat_id query int true "对话ID"
+// @Param session_id query string true "会话ID"
 // @Param page query int false "页码" default(1)
 // @Param size query int false "每页数量" default(20)
 // @Param role query string false "角色筛选" Enums(system, user, assistant, tool)
@@ -143,13 +143,13 @@ func (h *MessageHandler) ListMessages(c *gin.Context) {
 // @Tags 消息
 // @Accept json
 // @Produce json
-// @Param id path int true "消息ID"
+// @Param id path string true "消息ID"
 // @Param request body types.UpdateMessageRequest true "更新消息请求"
 // @Success 200 {object} Response{data=types.MessageResponse}
 // @Router /api/v1/messages/{id} [put]
 func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -193,12 +193,12 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 // @Tags 消息
 // @Accept json
 // @Produce json
-// @Param id path int true "消息ID"
+// @Param id path string true "消息ID"
 // @Success 200 {object} Response
 // @Router /api/v1/messages/{id} [delete]
 func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{

@@ -2,133 +2,119 @@ package middleware
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"link/internal/application/service"
-	"link/internal/types"
 )
 
-type AuthMiddleware struct {
-	userService *service.UserService
+// 无需认证的API列表
+var noAuthAPI = map[string][]string{
+	"/health":               {"GET"},
+	"/api/v1/auth/register": {"POST"},
+	"/api/v1/auth/login":    {"POST"},
+	"/api/v1/auth/refresh":  {"POST"},
 }
 
-// NewAuthMiddleware 创建认证中间件
-func NewAuthMiddleware(userService *service.UserService) *AuthMiddleware {
-	return &AuthMiddleware{
-		userService: userService,
+// 检查请求是否在无需认证的API列表中
+func isNoAuthAPI(path string, method string) bool {
+	for api, methods := range noAuthAPI {
+		// 如果以*结尾，按照前缀匹配，否则按照全路径匹配
+		if strings.HasSuffix(api, "*") {
+			if strings.HasPrefix(path, strings.TrimSuffix(api, "*")) && slices.Contains(methods, method) {
+				return true
+			}
+		} else if path == api && slices.Contains(methods, method) {
+			return true
+		}
 	}
+	return false
 }
 
-// AuthRequired JWT认证中间件
-func (m *AuthMiddleware) AuthRequired() gin.HandlerFunc {
+// Auth 认证中间件
+func Auth(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 从Header获取Token
+		// 忽略 OPTIONS 请求
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+
+		// 检查请求是否在无需认证的API列表中
+		if isNoAuthAPI(c.Request.URL.Path, c.Request.Method) {
+			c.Next()
+			return
+		}
+
+		// JWT Token 认证
 		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    -1,
-				"message": "未提供认证Token",
+				"error": "Unauthorized: missing or invalid authorization header",
 			})
 			c.Abort()
 			return
 		}
 
-		// 检查Bearer前缀
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    -1,
-				"message": "Token格式错误",
-			})
-			c.Abort()
-			return
-		}
-
-		// 验证Token
-		claims, err := m.userService.ValidateToken(parts[1])
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := userService.ValidateToken(token)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    -1,
-				"message": "Token无效或已过期",
+				"error": "Unauthorized: invalid token",
 			})
 			c.Abort()
 			return
 		}
 
-		// 检查Token类型
+		// 检查 Token 类型
 		if claims.TokenType != "access" {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"code":    -1,
-				"message": "Token类型错误",
+				"error": "Unauthorized: invalid token type",
 			})
 			c.Abort()
 			return
 		}
 
-		// 将用户信息存入上下文
-		c.Set("user_id", claims.UserID)
-		c.Set("username", claims.Username)
-		c.Set("email", claims.Email)
+		// 存储用户信息到上下文（包含租户ID）
+		SetUserContext(c, &UserContext{
+			ID:       claims.UserID,
+			Username: claims.Username,
+			Email:    claims.Email,
+			Status:   1, // 默认正常状态
+			Role:     "",
+		})
+
+		// 如果Token包含租户ID，也设置到上下文
+		if claims.TenantID > 0 {
+			c.Set(TenantIDKey, claims.TenantID)
+		}
 
 		c.Next()
 	}
 }
 
+// ========================================
+// 辅助函数
+// ========================================
+
 // GetUserID 从上下文获取用户ID
 func GetUserID(c *gin.Context) (int64, bool) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		return 0, false
+	if uid, exists := c.Get(UserIDKey); exists {
+		if uidInt, ok := uid.(int64); ok {
+			return uidInt, true
+		}
 	}
-	return userID.(int64), true
+	return 0, false
 }
 
 // GetUsername 从上下文获取用户名
 func GetUsername(c *gin.Context) (string, bool) {
-	username, exists := c.Get("username")
-	if !exists {
-		return "", false
-	}
-	return username.(string), true
-}
-
-// GetUserClaims 从上下文获取完整的用户信息
-func GetUserClaims(c *gin.Context) (*types.TokenClaims, bool) {
-	userID, hasID := c.Get("user_id")
-	username, hasUsername := c.Get("username")
-	email, hasEmail := c.Get("email")
-
-	if !hasID || !hasUsername || !hasEmail {
-		return nil, false
-	}
-
-	return &types.TokenClaims{
-		UserID:   userID.(int64),
-		Username: username.(string),
-		Email:    email.(string),
-	}, true
-}
-
-// WhiteList 白名单中间件（跳过认证的路径）
-func (m *AuthMiddleware) WhiteList(whiteListPaths []string) gin.HandlerFunc {
-	// 创建路径映射
-	whiteList := make(map[string]bool)
-	for _, path := range whiteListPaths {
-		whiteList[path] = true
-	}
-
-	return func(c *gin.Context) {
-		// 检查当前路径是否在白名单中
-		for path := range whiteList {
-			if c.Request.URL.Path == path || strings.HasPrefix(c.Request.URL.Path, path) {
-				c.Next()
-				return
-			}
+	if username, exists := c.Get(UsernameKey); exists {
+		if usernameStr, ok := username.(string); ok {
+			return usernameStr, true
 		}
-
-		// 不在白名单中，执行认证
-		m.AuthRequired()(c)
 	}
+	return "", false
 }

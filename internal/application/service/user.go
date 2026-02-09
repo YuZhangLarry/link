@@ -20,6 +20,7 @@ import (
 type UserService struct {
 	userRepo        interfaces.UserRepository
 	refreshTokenRepo interfaces.RefreshTokenRepository
+	tenantRepo      interfaces.TenantRepository
 	jwtConfig       *config.JWTConfig
 }
 
@@ -27,26 +28,47 @@ type UserService struct {
 func NewUserService(
 	userRepo interfaces.UserRepository,
 	refreshTokenRepo interfaces.RefreshTokenRepository,
+	tenantRepo interfaces.TenantRepository,
 	jwtConfig *config.JWTConfig,
 ) *UserService {
 	return &UserService{
 		userRepo:        userRepo,
 		refreshTokenRepo: refreshTokenRepo,
+		tenantRepo:      tenantRepo,
 		jwtConfig:       jwtConfig,
 	}
 }
 
 // Register 用户注册
 func (s *UserService) Register(ctx context.Context, req *types.RegisterRequest) (*types.AuthResponse, error) {
-	// 检查邮箱是否已存在
-	_, err := s.userRepo.FindByEmail(ctx, req.Email)
-	if err == nil {
+	// 如果没有提供租户ID，自动创建一个新租户
+	tenantID := req.TenantID
+	if tenantID == 0 {
+		// 自动创建租户（使用用户名作为租户名）
+		tenant := &types.Tenant{
+			Name:         req.Username + "_tenant",
+			Description:  "自动创建的租户",
+			Business:     "personal",
+			Status:       "active",
+			StorageQuota: 10 * 1024 * 1024 * 1024, // 10GB
+			StorageUsed:  0,
+		}
+		err := s.tenantRepo.Create(ctx, tenant)
+		if err != nil {
+			return nil, fmt.Errorf("自动创建租户失败: %w", err)
+		}
+		tenantID = tenant.ID
+	}
+
+	// 检查邮箱是否已存在（在租户内）
+	existingUser, err := s.userRepo.FindByEmail(ctx, tenantID, req.Email)
+	if err == nil && existingUser != nil {
 		return nil, errors.New("邮箱已被注册")
 	}
 
-	// 检查用户名是否已存在
-	_, err = s.userRepo.FindByUsername(ctx, req.Username)
-	if err == nil {
+	// 检查用户名是否已存在（在租户内）
+	existingUser, err = s.userRepo.FindByUsername(ctx, tenantID, req.Username)
+	if err == nil && existingUser != nil {
 		return nil, errors.New("用户名已被使用")
 	}
 
@@ -56,8 +78,9 @@ func (s *UserService) Register(ctx context.Context, req *types.RegisterRequest) 
 		return nil, fmt.Errorf("密码加密失败: %w", err)
 	}
 
-	// 创建用户
+	// 创建用户（包含租户ID）
 	user := &types.User{
+		TenantID:     tenantID,
 		Username:     req.Username,
 		Email:        req.Email,
 		PasswordHash: string(hashedPassword),
@@ -67,10 +90,10 @@ func (s *UserService) Register(ctx context.Context, req *types.RegisterRequest) 
 
 	err = s.userRepo.Create(ctx, user)
 	if err != nil {
-		return nil, fmt.Errorf("创建用户失败: %w", err)
+		return nil, fmt.Errorf("创建用户失败 (tenantID=%d, username=%s): %w", tenantID, req.Username, err)
 	}
 
-	// 生成Token
+	// 生成Token（包含租户ID）
 	accessToken, refreshToken, expiresAt, err := s.generateTokens(user)
 	if err != nil {
 		return nil, fmt.Errorf("生成Token失败: %w", err)
@@ -86,6 +109,7 @@ func (s *UserService) Register(ctx context.Context, req *types.RegisterRequest) 
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresAt:    expiresAt,
+		TenantID:     user.TenantID,
 		User: types.UserInfo{
 			ID:        user.ID,
 			Username:  user.Username,
@@ -93,14 +117,23 @@ func (s *UserService) Register(ctx context.Context, req *types.RegisterRequest) 
 			Avatar:    user.Avatar,
 			Status:    user.Status,
 			CreatedAt: user.CreatedAt,
+			TenantID:  user.TenantID,
 		},
 	}, nil
 }
 
 // Login 用户登录
 func (s *UserService) Login(ctx context.Context, req *types.LoginRequest) (*types.AuthResponse, error) {
-	// 查找用户
-	user, err := s.userRepo.FindByEmail(ctx, req.Email)
+	var user *types.User
+	var err error
+
+	// 如果没有提供租户ID，则仅通过邮箱查找用户（自动获取租户ID）
+	if req.TenantID == 0 {
+		user, err = s.userRepo.FindByEmailOnly(ctx, req.Email)
+	} else {
+		user, err = s.userRepo.FindByEmail(ctx, req.TenantID, req.Email)
+	}
+
 	if err != nil {
 		return nil, errors.New("邮箱或密码错误")
 	}
@@ -122,7 +155,7 @@ func (s *UserService) Login(ctx context.Context, req *types.LoginRequest) (*type
 		return nil, fmt.Errorf("更新登录时间失败: %w", err)
 	}
 
-	// 生成Token
+	// 生成Token（包含租户ID）
 	accessToken, refreshToken, expiresAt, err := s.generateTokens(user)
 	if err != nil {
 		return nil, fmt.Errorf("生成Token失败: %w", err)
@@ -138,6 +171,7 @@ func (s *UserService) Login(ctx context.Context, req *types.LoginRequest) (*type
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresAt:    expiresAt,
+		TenantID:     user.TenantID,
 		User: types.UserInfo{
 			ID:        user.ID,
 			Username:  user.Username,
@@ -145,6 +179,7 @@ func (s *UserService) Login(ctx context.Context, req *types.LoginRequest) (*type
 			Avatar:    user.Avatar,
 			Status:    user.Status,
 			CreatedAt: user.CreatedAt,
+			TenantID:  user.TenantID,
 		},
 	}, nil
 }
@@ -189,7 +224,7 @@ func (s *UserService) RefreshToken(ctx context.Context, req *types.RefreshTokenR
 		return nil, errors.New("刷新Token不存在或已失效")
 	}
 
-	// 生成新的Token
+	// 生成新的Token（包含租户ID）
 	accessToken, refreshToken, expiresAt, err := s.generateTokens(user)
 	if err != nil {
 		return nil, fmt.Errorf("生成Token失败: %w", err)
@@ -211,6 +246,7 @@ func (s *UserService) RefreshToken(ctx context.Context, req *types.RefreshTokenR
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresAt:    expiresAt,
+		TenantID:     user.TenantID,
 		User: types.UserInfo{
 			ID:        user.ID,
 			Username:  user.Username,
@@ -218,6 +254,7 @@ func (s *UserService) RefreshToken(ctx context.Context, req *types.RefreshTokenR
 			Avatar:    user.Avatar,
 			Status:    user.Status,
 			CreatedAt: user.CreatedAt,
+			TenantID:  user.TenantID,
 		},
 	}, nil
 }
@@ -236,6 +273,7 @@ func (s *UserService) GetUserByID(ctx context.Context, userID int64) (*types.Use
 		Avatar:    user.Avatar,
 		Status:    user.Status,
 		CreatedAt: user.CreatedAt,
+		TenantID:  user.TenantID,
 	}, nil
 }
 
@@ -253,12 +291,17 @@ func (s *UserService) ValidateToken(tokenString string) (*types.TokenClaims, err
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		return &types.TokenClaims{
+		tokenClaims := &types.TokenClaims{
 			UserID:    int64(claims["user_id"].(float64)),
 			Username:  claims["username"].(string),
 			Email:     claims["email"].(string),
 			TokenType: claims["token_type"].(string),
-		}, nil
+		}
+		// 尝试获取 tenant_id（如果存在）
+		if tenantID, ok := claims["tenant_id"].(float64); ok {
+			tokenClaims.TenantID = int64(tenantID)
+		}
+		return tokenClaims, nil
 	}
 
 	return nil, errors.New("无效的Token")
@@ -270,9 +313,10 @@ func (s *UserService) generateTokens(user *types.User) (string, string, int64, e
 	accessExpiresAt := now.Add(time.Duration(s.jwtConfig.AccessTokenExpire) * time.Second)
 	refreshExpiresAt := now.Add(time.Duration(s.jwtConfig.RefreshTokenExpire) * time.Second)
 
-	// 生成访问Token
+	// 生成访问Token（包含租户ID）
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":    user.ID,
+		"tenant_id":  user.TenantID,
 		"username":   user.Username,
 		"email":      user.Email,
 		"token_type": "access",
@@ -285,9 +329,10 @@ func (s *UserService) generateTokens(user *types.User) (string, string, int64, e
 		return "", "", 0, err
 	}
 
-	// 生成刷新Token
+	// 生成刷新Token（包含租户ID）
 	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":    user.ID,
+		"tenant_id":  user.TenantID,
 		"username":   user.Username,
 		"email":      user.Email,
 		"token_type": "refresh",

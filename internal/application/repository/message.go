@@ -2,197 +2,279 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
+	"gorm.io/gorm"
+
+	common_repository "link/internal/common/repository"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
 
-// messageRepository 消息数据访问实现
+// messageRepository 消息数据访问实现 - GORM 版本
 type messageRepository struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewMessageRepository 创建消息数据访问实例
-func NewMessageRepository(db *sql.DB) interfaces.MessageRepository {
+func NewMessageRepository(db *gorm.DB) interfaces.MessageRepository {
 	return &messageRepository{db: db}
 }
 
 // Create 创建消息
-func (r *messageRepository) Create(ctx context.Context, message *types.MessageEntity) error {
-	// 处理 tool_calls：如果是空字符串，使用 NULL
-	var toolCalls interface{} = message.ToolCalls
-	if toolCalls == "" {
-		toolCalls = nil
+func (r *messageRepository) Create(ctx context.Context, req *types.CreateMessageRequest) (*types.MessageEntity, error) {
+	// 生成 UUID
+	messageID := common_repository.GenerateUUID()
+
+	// 从上下文获取租户ID（用于验证 session 属于该租户）
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 验证 session 是否存在（如果 tenantID > 0，还需要验证租户）
+	var session types.SessionEntity
+	query := r.db.WithContext(ctx).Where("id = ?", req.SessionID)
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if err := query.First(&session).Error; err != nil {
+		return nil, fmt.Errorf("会话不存在或无权访问: %w", err)
 	}
 
-	query := `
-		INSERT INTO messages (chat_id, role, content, tool_calls, token_count, created_at)
-		VALUES (?, ?, ?, ?, ?, NOW())
-	`
-	result, err := r.db.ExecContext(ctx, query,
-		message.ChatID, message.Role, message.Content, toolCalls, message.TokenCount,
-	)
-	if err != nil {
-		return fmt.Errorf("创建消息失败: %w", err)
+	// 创建消息实体
+	message := &types.MessageEntity{
+		ID:                  messageID,
+		RequestID:           common_repository.GenerateUUID(),
+		SessionID:           req.SessionID,
+		Role:                req.Role,
+		Content:             req.Content,
+		KnowledgeReferences: "{}", // 默认空JSON
+		AgentSteps:          "{}", // 默认空JSON
+		ToolCalls:           "{}", // 默认空JSON
+		IsCompleted:         false,
+		TokenCount:          req.TokenCount,
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("获取消息ID失败: %w", err)
+	// 如果请求中提供了值，覆盖默认值
+	if req.KnowledgeReferences != "" {
+		message.KnowledgeReferences = req.KnowledgeReferences
+	}
+	if req.AgentSteps != "" {
+		message.AgentSteps = req.AgentSteps
+	}
+	if req.ToolCalls != "" {
+		message.ToolCalls = req.ToolCalls
 	}
 
-	message.ID = id
-	return nil
+	if err := r.db.WithContext(ctx).Create(message).Error; err != nil {
+		return nil, fmt.Errorf("创建消息失败: %w", err)
+	}
+
+	return message, nil
 }
 
 // FindByID 根据ID查找消息
-func (r *messageRepository) FindByID(ctx context.Context, id int64) (*types.MessageEntity, error) {
-	query := `
-		SELECT id, chat_id, role, content, tool_calls, token_count, created_at
-		FROM messages
-		WHERE id = ?
-	`
-	message := &types.MessageEntity{}
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&message.ID, &message.ChatID, &message.Role, &message.Content,
-		&message.ToolCalls, &message.TokenCount, &message.CreatedAt,
-	)
-	if err == sql.ErrNoRows {
+func (r *messageRepository) FindByID(ctx context.Context, id string) (*types.MessageEntity, error) {
+	tenantID := getTenantIDFromContext(ctx)
+
+	var message types.MessageEntity
+	query := r.db.WithContext(ctx).Where("messages.id = ? AND messages.deleted_at IS NULL", id)
+	// 通过 JOIN session 来验证租户权限（仅当 tenantID > 0 时）
+	if tenantID > 0 {
+		query = query.Joins("JOIN sessions ON sessions.id = messages.session_id").
+			Where("sessions.tenant_id = ?", tenantID)
+	}
+	err := query.First(&message).Error
+
+	if err == gorm.ErrRecordNotFound {
 		return nil, fmt.Errorf("消息不存在")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("查询消息失败: %w", err)
 	}
-	return message, nil
+
+	return &message, nil
 }
 
-// FindByChatID 根据对话ID查找消息列表
-func (r *messageRepository) FindByChatID(ctx context.Context, chatID int64, page, pageSize int) ([]*types.MessageEntity, int64, error) {
+// FindBySessionID 根据会话ID查找消息列表
+func (r *messageRepository) FindBySessionID(ctx context.Context, sessionID string, page, pageSize int) ([]*types.MessageEntity, int64, error) {
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 验证 session 是否存在（如果 tenantID > 0，还需要验证租户）
+	var session types.SessionEntity
+	query := r.db.WithContext(ctx).Where("id = ?", sessionID)
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if err := query.First(&session).Error; err != nil {
+		return nil, 0, fmt.Errorf("会话不存在或无权访问: %w", err)
+	}
+
 	// 查询总数
 	var total int64
-	countQuery := `SELECT COUNT(*) FROM messages WHERE chat_id = ?`
-	err := r.db.QueryRowContext(ctx, countQuery, chatID).Scan(&total)
-	if err != nil {
+	if err := r.db.WithContext(ctx).Model(&types.MessageEntity{}).Where("session_id = ? AND deleted_at IS NULL", sessionID).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("查询消息总数失败: %w", err)
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	query := `
-		SELECT id, chat_id, role, content, tool_calls, token_count, created_at
-		FROM messages
-		WHERE chat_id = ?
-		ORDER BY created_at ASC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.QueryContext(ctx, query, chatID, pageSize, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询消息列表失败: %w", err)
-	}
-	defer rows.Close()
-
 	var messages []*types.MessageEntity
-	for rows.Next() {
-		message := &types.MessageEntity{}
-		err := rows.Scan(
-			&message.ID, &message.ChatID, &message.Role, &message.Content,
-			&message.ToolCalls, &message.TokenCount, &message.CreatedAt,
-		)
-		if err != nil {
-			return nil, 0, fmt.Errorf("扫描消息数据失败: %w", err)
-		}
-		messages = append(messages, message)
+	if err := r.db.WithContext(ctx).
+		Where("session_id = ? AND deleted_at IS NULL", sessionID).
+		Order("created_at ASC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&messages).Error; err != nil {
+		return nil, 0, fmt.Errorf("查询消息列表失败: %w", err)
 	}
 
 	return messages, total, nil
 }
 
-// FindByChatIDAndRole 根据对话ID和角色查找消息
-func (r *messageRepository) FindByChatIDAndRole(ctx context.Context, chatID int64, role string, page, pageSize int) ([]*types.MessageEntity, int64, error) {
+// FindBySessionIDAndRole 根据会话ID和角色查找消息
+func (r *messageRepository) FindBySessionIDAndRole(ctx context.Context, sessionID string, role string, page, pageSize int) ([]*types.MessageEntity, int64, error) {
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 验证 session 是否存在（如果 tenantID > 0，还需要验证租户）
+	var session types.SessionEntity
+	query := r.db.WithContext(ctx).Where("id = ?", sessionID)
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if err := query.First(&session).Error; err != nil {
+		return nil, 0, fmt.Errorf("会话不存在或无权访问: %w", err)
+	}
+
 	// 查询总数
 	var total int64
-	countQuery := `SELECT COUNT(*) FROM messages WHERE chat_id = ? AND role = ?`
-	err := r.db.QueryRowContext(ctx, countQuery, chatID, role).Scan(&total)
-	if err != nil {
+	if err := r.db.WithContext(ctx).Model(&types.MessageEntity{}).
+		Where("session_id = ? AND role = ? AND deleted_at IS NULL", sessionID, role).
+		Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("查询消息总数失败: %w", err)
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	query := `
-		SELECT id, chat_id, role, content, tool_calls, token_count, created_at
-		FROM messages
-		WHERE chat_id = ? AND role = ?
-		ORDER BY created_at ASC
-		LIMIT ? OFFSET ?
-	`
-	rows, err := r.db.QueryContext(ctx, query, chatID, role, pageSize, offset)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询消息列表失败: %w", err)
-	}
-	defer rows.Close()
-
 	var messages []*types.MessageEntity
-	for rows.Next() {
-		message := &types.MessageEntity{}
-		err := rows.Scan(
-			&message.ID, &message.ChatID, &message.Role, &message.Content,
-			&message.ToolCalls, &message.TokenCount, &message.CreatedAt,
-		)
-		if err != nil {
-			return nil, 0, fmt.Errorf("扫描消息数据失败: %w", err)
-		}
-		messages = append(messages, message)
+	if err := r.db.WithContext(ctx).
+		Where("session_id = ? AND role = ? AND deleted_at IS NULL", sessionID, role).
+		Order("created_at ASC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&messages).Error; err != nil {
+		return nil, 0, fmt.Errorf("查询消息列表失败: %w", err)
 	}
 
 	return messages, total, nil
 }
 
 // Update 更新消息
-func (r *messageRepository) Update(ctx context.Context, message *types.MessageEntity) error {
-	query := `
-		UPDATE messages
-		SET content = ?, tool_calls = ?, token_count = ?
-		WHERE id = ?
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		message.Content, message.ToolCalls, message.TokenCount, message.ID,
-	)
-	if err != nil {
+func (r *messageRepository) Update(ctx context.Context, id string, req *types.UpdateMessageRequest) error {
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 先验证消息是否存在且有权限
+	var message types.MessageEntity
+	query := r.db.WithContext(ctx).Where("messages.id = ? AND messages.deleted_at IS NULL", id)
+	if tenantID > 0 {
+		query = query.Joins("JOIN sessions ON sessions.id = messages.session_id").
+			Where("sessions.tenant_id = ?", tenantID)
+	}
+	if err := query.First(&message).Error; err != nil {
+		return fmt.Errorf("消息不存在或无权访问: %w", err)
+	}
+
+	// 构建更新字段
+	updates := make(map[string]interface{})
+	if req.Content != nil {
+		updates["content"] = *req.Content
+	}
+	if req.IsCompleted != nil {
+		updates["is_completed"] = *req.IsCompleted
+	}
+	if req.TokenCount != nil {
+		updates["token_count"] = *req.TokenCount
+	}
+	if req.KnowledgeReferences != nil {
+		updates["knowledge_references"] = *req.KnowledgeReferences
+	}
+	if req.AgentSteps != nil {
+		updates["agent_steps"] = *req.AgentSteps
+	}
+
+	if err := r.db.WithContext(ctx).Model(&message).Updates(updates).Error; err != nil {
 		return fmt.Errorf("更新消息失败: %w", err)
 	}
+
 	return nil
 }
 
-// Delete 删除消息
-func (r *messageRepository) Delete(ctx context.Context, id int64) error {
-	query := `DELETE FROM messages WHERE id = ?`
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("删除消息失败: %w", err)
+// Delete 删除消息（软删除）
+func (r *messageRepository) Delete(ctx context.Context, id string) error {
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 使用 GORM 的软删除功能
+	query := r.db.WithContext(ctx).Where("id = ? AND deleted_at IS NULL", id)
+	if tenantID > 0 {
+		query = query.Where("id IN (SELECT messages.id FROM messages JOIN sessions ON sessions.id = messages.session_id WHERE sessions.tenant_id = ?)", tenantID)
 	}
-	return nil
-}
+	result := query.Delete(&types.MessageEntity{})
 
-// DeleteByChatID 删除对话的所有消息
-func (r *messageRepository) DeleteByChatID(ctx context.Context, chatID int64) error {
-	query := `DELETE FROM messages WHERE chat_id = ?`
-	_, err := r.db.ExecContext(ctx, query, chatID)
-	if err != nil {
-		return fmt.Errorf("删除对话消息失败: %w", err)
+	if result.Error != nil {
+		return fmt.Errorf("删除消息失败: %w", result.Error)
 	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("消息不存在或无权访问")
+	}
+
 	return nil
 }
 
-// CountByChatID 统计对话的消息数量
-func (r *messageRepository) CountByChatID(ctx context.Context, chatID int64) (int64, error) {
+// DeleteBySessionID 删除会话的所有消息
+func (r *messageRepository) DeleteBySessionID(ctx context.Context, sessionID string) error {
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 验证 session 是否存在（如果 tenantID > 0，还需要验证租户）
+	var session types.SessionEntity
+	query := r.db.WithContext(ctx).Where("id = ?", sessionID)
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if err := query.First(&session).Error; err != nil {
+		return fmt.Errorf("会话不存在或无权访问: %w", err)
+	}
+
+	// 软删除该会话的所有消息
+	if err := r.db.WithContext(ctx).Where("session_id = ?", sessionID).Delete(&types.MessageEntity{}).Error; err != nil {
+		return fmt.Errorf("删除会话消息失败: %w", err)
+	}
+
+	return nil
+}
+
+// CountBySessionID 统计会话的消息数量
+func (r *messageRepository) CountBySessionID(ctx context.Context, sessionID string) (int64, error) {
+	tenantID := getTenantIDFromContext(ctx)
+
+	// 验证 session 是否存在（如果 tenantID > 0，还需要验证租户）
+	var session types.SessionEntity
+	query := r.db.WithContext(ctx).Where("id = ?", sessionID)
+	if tenantID > 0 {
+		query = query.Where("tenant_id = ?", tenantID)
+	}
+	if err := query.First(&session).Error; err != nil {
+		return 0, fmt.Errorf("会话不存在或无权访问: %w", err)
+	}
+
 	var count int64
-	query := `SELECT COUNT(*) FROM messages WHERE chat_id = ?`
-	err := r.db.QueryRowContext(ctx, query, chatID).Scan(&count)
-	if err != nil {
+	if err := r.db.WithContext(ctx).Model(&types.MessageEntity{}).
+		Where("session_id = ? AND deleted_at IS NULL", sessionID).
+		Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("统计消息数量失败: %w", err)
 	}
+
 	return count, nil
 }
+
+// ========================================
+// 辅助方法
+// ========================================
+// getTenantIDFromContext 从上下文获取租户ID（在 session.go 中定义）
+

@@ -125,7 +125,7 @@ func (h *ChatHandler) ChatStream(c *gin.Context) {
 
 	// 获取或创建会话ID
 	sessionID := h.getSessionID(c, req, userID)
-	log.Printf("✅ [ChatStream] 会话ID: %d", sessionID)
+	log.Printf("✅ [ChatStream] 会话ID: %s", sessionID)
 
 	// 保存用户消息
 	h.saveUserMessage(c.Request.Context(), sessionID, &req)
@@ -259,12 +259,11 @@ func (h *ChatHandler) getUserID(c *gin.Context) int64 {
 }
 
 // getSessionID 获取或创建会话ID
-func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID int64) int64 {
+func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID int64) string {
 	// 尝试从请求头获取会话ID
 	if sessionID := c.GetHeader("X-Session-ID"); sessionID != "" {
-		id := int64(parseInt(sessionID))
-		log.Printf("📌 [getSessionID] 从请求头获取会话ID: %d", id)
-		return id
+		log.Printf("📌 [getSessionID] 从请求头获取会话ID: %s", sessionID)
+		return sessionID
 	}
 
 	// 如果没有会话ID，创建新会话
@@ -272,30 +271,29 @@ func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID
 	session, err := h.sessionService.CreateSession(c.Request.Context(), userID, &types.CreateSessionRequest{
 		Title:       generateSessionTitle(req.Content),
 		Description: "自动创建的会话",
-		Model:       "gpt-3.5-turbo",
 		MaxRounds:   50,
 	})
 	if err != nil {
 		log.Printf("❌ [getSessionID] 创建会话失败: %v", err)
-		return 0 // 创建失败返回0
+		return "" // 创建失败返回空字符串
 	}
 
-	log.Printf("✅ [getSessionID] 新会话创建成功: ID=%d", session.ID)
+	log.Printf("✅ [getSessionID] 新会话创建成功: ID=%s", session.ID)
 	return session.ID
 }
 
 // saveUserMessage 保存用户消息
-func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID int64, req *types.ChatRequest) {
-	if sessionID == 0 {
-		log.Printf("⚠️ [saveUserMessage] sessionID 为 0，跳过保存")
+func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID string, req *types.ChatRequest) {
+	if sessionID == "" {
+		log.Printf("⚠️ [saveUserMessage] sessionID 为空，跳过保存")
 		return
 	}
 
-	log.Printf("💾 [saveUserMessage] 保存用户消息: sessionID=%d, content=%s", sessionID, req.Content[:min(20, len(req.Content))]+"...")
+	log.Printf("💾 [saveUserMessage] 保存用户消息: sessionID=%s, content=%s", sessionID, req.Content[:min(20, len(req.Content))]+"...")
 
 	// 用户消息没有 tool_calls，不需要传
 	_, err := h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
-		ChatID:     sessionID,
+		SessionID:  sessionID,
 		Role:       "user",
 		Content:    req.Content,
 		TokenCount: len(req.Content) / 3, // 简单估算
@@ -309,8 +307,8 @@ func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID int64, req 
 }
 
 // saveAssistantMessage 保存 AI 回复
-func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID int64, resp *types.ChatResponse) {
-	if sessionID == 0 {
+func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID string, resp *types.ChatResponse) {
+	if sessionID == "" {
 		return
 	}
 
@@ -322,7 +320,7 @@ func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID int64,
 	}
 
 	h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
-		ChatID:     sessionID,
+		SessionID:  sessionID,
 		Role:       resp.Role,
 		Content:    resp.Content,
 		ToolCalls:  toolCallsJSON,
@@ -331,7 +329,7 @@ func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID int64,
 }
 
 // handleStreamWithSave 处理流式响应并保存完整内容
-func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, sessionID int64, eventChan <-chan types.StreamChatEvent) {
+func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, sessionID string, eventChan <-chan types.StreamChatEvent) {
 	sseWriter := chat.NewSSEResponseWriter(c)
 	defer sseWriter.Close()
 
@@ -364,7 +362,7 @@ func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, 
 	}
 
 	// 保存完整的 AI 回复
-	if sessionID > 0 && fullContent != "" {
+	if sessionID != "" && fullContent != "" {
 		var toolCallsJSON string
 		if len(toolCalls) > 0 {
 			data, _ := json.Marshal(toolCalls)
@@ -372,7 +370,7 @@ func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, 
 		}
 
 		h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
-			ChatID:     sessionID,
+			SessionID:  sessionID,
 			Role:       "assistant",
 			Content:    fullContent,
 			ToolCalls:  toolCallsJSON,

@@ -5,31 +5,31 @@ import (
 	"link/internal/types"
 )
 
-// MessageRepository 消息数据访问接口
+// MessageRepository 消息数据访问接口 - 多租户版本
 type MessageRepository interface {
-	// Create 创建消息
-	Create(ctx context.Context, message *types.MessageEntity) error
+	// Create 创建消息 - 返回创建的实体
+	Create(ctx context.Context, req *types.CreateMessageRequest) (*types.MessageEntity, error)
 
 	// FindByID 根据ID查找消息
-	FindByID(ctx context.Context, id int64) (*types.MessageEntity, error)
+	FindByID(ctx context.Context, id string) (*types.MessageEntity, error)
 
-	// FindByChatID 根据对话ID查找消息列表
-	FindByChatID(ctx context.Context, chatID int64, page, pageSize int) ([]*types.MessageEntity, int64, error)
+	// FindBySessionID 根据会话ID查找消息列表（原 FindByChatID）
+	FindBySessionID(ctx context.Context, sessionID string, page, pageSize int) ([]*types.MessageEntity, int64, error)
 
-	// FindByChatIDAndRole 根据对话ID和角色查找消息
-	FindByChatIDAndRole(ctx context.Context, chatID int64, role string, page, pageSize int) ([]*types.MessageEntity, int64, error)
+	// FindBySessionIDAndRole 根据会话ID和角色查找消息（原 FindByChatIDAndRole）
+	FindBySessionIDAndRole(ctx context.Context, sessionID string, role string, page, pageSize int) ([]*types.MessageEntity, int64, error)
 
 	// Update 更新消息
-	Update(ctx context.Context, message *types.MessageEntity) error
+	Update(ctx context.Context, id string, req *types.UpdateMessageRequest) error
 
-	// Delete 删除消息
-	Delete(ctx context.Context, id int64) error
+	// Delete 删除消息（软删除）
+	Delete(ctx context.Context, id string) error
 
-	// DeleteByChatID 删除对话的所有消息
-	DeleteByChatID(ctx context.Context, chatID int64) error
+	// DeleteBySessionID 删除会话的所有消息
+	DeleteBySessionID(ctx context.Context, sessionID string) error
 
-	// CountByChatID 统计对话的消息数量
-	CountByChatID(ctx context.Context, chatID int64) (int64, error)
+	// CountBySessionID 统计会话的消息数量
+	CountBySessionID(ctx context.Context, sessionID string) (int64, error)
 }
 
 // MessageService 消息服务接口
@@ -38,17 +38,17 @@ type MessageService interface {
 	CreateMessage(ctx context.Context, req *types.CreateMessageRequest) (*types.MessageResponse, error)
 
 	// GetMessageByID 根据ID获取消息
-	GetMessageByID(ctx context.Context, id int64) (*types.MessageResponse, error)
+	GetMessageByID(ctx context.Context, id string) (*types.MessageResponse, error)
 
 	// ListMessages 查询消息列表
 	ListMessages(ctx context.Context, req *types.ListMessagesRequest) (*types.MessageListResponse, error)
 
 	// UpdateMessage 更新消息
-	UpdateMessage(ctx context.Context, id int64, req *types.UpdateMessageRequest) (*types.MessageResponse, error)
+	UpdateMessage(ctx context.Context, id string, req *types.UpdateMessageRequest) (*types.MessageResponse, error)
 
 	// DeleteMessage 删除消息
-	DeleteMessage(ctx context.Context, id int64) error
+	DeleteMessage(ctx context.Context, id string) error
 
-	// DeleteMessagesByChatID 删除对话的所有消息
-	DeleteMessagesByChatID(ctx context.Context, chatID int64) error
+	// DeleteMessagesBySessionID 删除会话的所有消息（原 DeleteMessagesByChatID）
+	DeleteMessagesBySessionID(ctx context.Context, sessionID string) error
 }
