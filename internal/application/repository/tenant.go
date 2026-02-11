@@ -5,10 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	common_repository "link/internal/common"
 
 	"gorm.io/gorm"
 
-	common_repository "link/internal/common/repository"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )

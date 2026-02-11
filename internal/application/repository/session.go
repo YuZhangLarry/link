@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	common_repository "link/internal/common"
 
 	"gorm.io/gorm"
 
-	common_repository "link/internal/common/repository"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
@@ -71,7 +71,7 @@ func (r *sessionRepository) Create(ctx context.Context, userID int64, req *types
 		EmbeddingTopK:     embeddingTopK,
 		RerankTopK:        rerankTopK,
 		RerankThreshold:   rerankThreshold,
-		Status:            1, // 默认正常状态
+		Status:            1,    // 默认正常状态
 		SummaryParameters: "{}", // 默认空JSON
 		AgentConfig:       "{}", // 默认空JSON
 		ContextConfig:     "{}", // 默认空JSON

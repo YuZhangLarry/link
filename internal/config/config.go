@@ -24,10 +24,18 @@ type MilvusConfig struct {
 	Token string
 }
 
+// Neo4jConfig Neo4j图数据库配置
+type Neo4jConfig struct {
+	URI         string // Neo4j连接URI，如: bolt://localhost:7687
+	Username    string // 用户名，默认: neo4j
+	Password    string // 密码
+	MaxPoolSize int    // 连接池最大连接数
+}
+
 // JWTConfig JWT配置
 type JWTConfig struct {
-	Secret            string
-	AccessTokenExpire int
+	Secret             string
+	AccessTokenExpire  int
 	RefreshTokenExpire int
 }
 
@@ -56,9 +64,9 @@ type EmbeddingConfig struct {
 
 // TenantConfig 租户配置
 type TenantConfig struct {
-	EnableMultiTenant      bool   // 是否启用多租户
-	EnableCrossTenantAccess bool   // 是否启用跨租户访问
-	DefaultStorageQuota    int64  // 默认存储配额 (bytes)
+	EnableMultiTenant       bool  // 是否启用多租户
+	EnableCrossTenantAccess bool  // 是否启用跨租户访问
+	DefaultStorageQuota     int64 // 默认存储配额 (bytes)
 }
 
 // ServerConfig HTTP服务配置
@@ -70,13 +78,15 @@ type ServerConfig struct {
 
 // Config 总配置
 type Config struct {
-	Database *DatabaseConfig
-	JWT      *JWTConfig
-	Tenant   *TenantConfig
-	Chat     *ChatConfig
-	Search   *SearchConfig
+	Database  *DatabaseConfig
+	Milvus    *MilvusConfig
+	Neo4j     *Neo4jConfig
+	JWT       *JWTConfig
+	Tenant    *TenantConfig
+	Chat      *ChatConfig
+	Search    *SearchConfig
 	Embedding *EmbeddingConfig
-	Server   *ServerConfig
+	Server    *ServerConfig
 }
 
 // LoadDatabaseConfig 从环境变量加载数据库配置
@@ -108,6 +118,21 @@ func LoadMilvusConfig() *MilvusConfig {
 	}
 }
 
+// LoadNeo4jConfig 从环境变量加载Neo4j配置
+func LoadNeo4jConfig() *Neo4jConfig {
+	// 尝试加载 .env 文件
+	projectRoot, _ := os.Getwd()
+	envPath := filepath.Join(projectRoot, ".env")
+	_ = godotenv.Load(envPath)
+
+	return &Neo4jConfig{
+		URI:         getEnv("NEO4J_URI", "bolt://localhost:7687"),
+		Username:    getEnv("NEO4J_USERNAME", "neo4j"),
+		Password:    getEnv("NEO4J_PASSWORD", ""),
+		MaxPoolSize: getEnvAsInt("NEO4J_MAX_POOL_SIZE", 50),
+	}
+}
+
 // LoadJWTConfig 从环境变量加载JWT配置
 func LoadJWTConfig() *JWTConfig {
 	// 尝试加载 .env 文件
@@ -116,9 +141,9 @@ func LoadJWTConfig() *JWTConfig {
 	_ = godotenv.Load(envPath)
 
 	return &JWTConfig{
-		Secret:            getEnv("JWT_SECRET", "your-secret-key"),
-		AccessTokenExpire:  getEnvAsInt("JWT_ACCESS_TOKEN_EXPIRE", 86400),    // 24小时
-		RefreshTokenExpire: getEnvAsInt("JWT_REFRESH_TOKEN_EXPIRE", 604800),  // 7天
+		Secret:             getEnv("JWT_SECRET", "your-secret-key"),
+		AccessTokenExpire:  getEnvAsInt("JWT_ACCESS_TOKEN_EXPIRE", 86400),   // 24小时
+		RefreshTokenExpire: getEnvAsInt("JWT_REFRESH_TOKEN_EXPIRE", 604800), // 7天
 	}
 }
 
@@ -176,9 +201,9 @@ func LoadTenantConfig() *TenantConfig {
 	_ = godotenv.Load(envPath)
 
 	return &TenantConfig{
-		EnableMultiTenant:      getEnvAsBool("TENANT_ENABLED", false),
+		EnableMultiTenant:       getEnvAsBool("TENANT_ENABLED", false),
 		EnableCrossTenantAccess: getEnvAsBool("TENANT_CROSS_ACCESS", false),
-		DefaultStorageQuota:    getEnvAsInt64("TENANT_DEFAULT_QUOTA", 10*1024*1024*1024), // 10GB
+		DefaultStorageQuota:     getEnvAsInt64("TENANT_DEFAULT_QUOTA", 10*1024*1024*1024), // 10GB
 	}
 }
 
@@ -200,6 +225,8 @@ func LoadServerConfig() *ServerConfig {
 func LoadConfig() *Config {
 	return &Config{
 		Database:  LoadDatabaseConfig(),
+		Milvus:    LoadMilvusConfig(),
+		Neo4j:     LoadNeo4jConfig(),
 		JWT:       LoadJWTConfig(),
 		Tenant:    LoadTenantConfig(),
 		Chat:      LoadChatConfig(),

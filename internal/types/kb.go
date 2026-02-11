@@ -44,6 +44,7 @@ type Knowledge struct {
 	Source           string     `json:"source" gorm:"type:varchar(20)"`
 	ParseStatus      string     `json:"parse_status" gorm:"type:varchar(20);default:'unprocessed';index:idx_parse_status"`
 	EnableStatus     string     `json:"enable_status" gorm:"type:varchar(20);default:'enabled';index:idx_enable_status"`
+	TagID            int64      `json:"tag_id" gorm:"default:0"` // 关联的标签ID
 	EmbeddingModelID string     `json:"embedding_model_id" gorm:"type:varchar(64)"`
 	FileName         string     `json:"file_name" gorm:"type:varchar(255)"`
 	FileType         string     `json:"file_type" gorm:"type:varchar(50)"`
@@ -66,27 +67,28 @@ func (Knowledge) TableName() string {
 
 // Chunk 文档分块实体
 type Chunk struct {
-	ID              string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID        int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_kb,priority:1"`
-	KBID            string     `json:"kb_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:2;index:idx_kb_id"`
-	KnowledgeID     string     `json:"knowledge_id" gorm:"not null;type:varchar(36);index:idx_knowledge_id"`
-	Content         string     `json:"content" gorm:"type:text;not null"`
-	ChunkIndex      int        `json:"chunk_index" gorm:"not null;index:idx_chunk_index"`
-	IsEnabled       bool       `json:"is_enabled" gorm:"default:true;index:idx_enabled"`
-	StartAt         int        `json:"start_at" gorm:"default:0"`
-	EndAt           int        `json:"end_at" gorm:"default:0"`
-	PreChunkID      *string    `json:"pre_chunk_id,omitempty" gorm:"type:varchar(36)"`
-	NextChunkID     *string    `json:"next_chunk_id,omitempty" gorm:"type:varchar(36)"`
-	ChunkType       string     `json:"chunk_type" gorm:"type:varchar(20);default:'text'"`
-	ParentChunkID   *string    `json:"parent_chunk_id,omitempty" gorm:"type:varchar(36)"`
-	ImageInfo       *string    `json:"image_info,omitempty" gorm:"type:json"`
-	RelationChunks  *string    `json:"relation_chunks,omitempty" gorm:"type:json"`
-	EmbeddingID     string     `json:"embedding_id" gorm:"type:varchar(64)"`
-	TokenCount      int        `json:"token_count" gorm:"default:0"`
-	Metadata        *string    `json:"metadata,omitempty" gorm:"type:json"`
-	CreatedAt       time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt       time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt       *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	ID             string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID       int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_kb,priority:1"`
+	KBID           string     `json:"kb_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:2;index:idx_kb_id"`
+	KnowledgeID    string     `json:"knowledge_id" gorm:"not null;type:varchar(36);index:idx_knowledge_id"`
+	Content        string     `json:"content" gorm:"type:text;not null"`
+	ChunkIndex     int        `json:"chunk_index" gorm:"not null;index:idx_chunk_index"`
+	IsEnabled      bool       `json:"is_enabled" gorm:"default:true;index:idx_enabled"`
+	StartAt        int        `json:"start_at" gorm:"default:0"`
+	EndAt          int        `json:"end_at" gorm:"default:0"`
+	PreChunkID     *string    `json:"pre_chunk_id,omitempty" gorm:"type:varchar(36)"`
+	NextChunkID    *string    `json:"next_chunk_id,omitempty" gorm:"type:varchar(36)"`
+	ChunkType      string     `json:"chunk_type" gorm:"type:varchar(20);default:'text'"`
+	ParentChunkID  *string    `json:"parent_chunk_id,omitempty" gorm:"type:varchar(36)"`
+	ImageInfo      *string    `json:"image_info,omitempty" gorm:"type:json"`
+	RelationChunks *string    `json:"relation_chunks,omitempty" gorm:"type:json"`
+	EmbeddingID    string     `json:"embedding_id" gorm:"type:varchar(64)"`
+	TokenCount     int        `json:"token_count" gorm:"default:0"`
+	TagID          int64      `json:"tag_id" gorm:"default:0"` // 关联的标签ID
+	Metadata       *string    `json:"metadata,omitempty" gorm:"type:json"`
+	CreatedAt      time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt      time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 func (Chunk) TableName() string {
@@ -124,15 +126,15 @@ type CreateKnowledgeBaseRequest struct {
 
 // UpdateKnowledgeBaseRequest 更新知识库请求
 type UpdateKnowledgeBaseRequest struct {
-	Name            *string `json:"name" binding:"omitempty,min=1,max=100"`
-	Description     *string `json:"description" binding:"omitempty,max=500"`
-	Avatar          *string `json:"avatar"`
+	Name             *string `json:"name" binding:"omitempty,min=1,max=100"`
+	Description      *string `json:"description" binding:"omitempty,max=500"`
+	Avatar           *string `json:"avatar"`
 	EmbeddingModelID *string `json:"embedding_model_id"`
-	SummaryModelID  *string `json:"summary_model_id"`
-	RerankModelID   *string `json:"rerank_model_id"`
-	IsPublic        *bool   `json:"is_public"`
-	Status          *int8   `json:"status" binding:"omitempty,oneof=0 1"`
-	ChunkingConfig  *string `json:"chunking_config"`
+	SummaryModelID   *string `json:"summary_model_id"`
+	RerankModelID    *string `json:"rerank_model_id"`
+	IsPublic         *bool   `json:"is_public"`
+	Status           *int8   `json:"status" binding:"omitempty,oneof=0 1"`
+	ChunkingConfig   *string `json:"chunking_config"`
 }
 
 // KnowledgeBaseResponse 知识库响应
@@ -154,16 +156,16 @@ type KnowledgeBaseResponse struct {
 
 // CreateKnowledgeRequest 创建知识条目请求
 type CreateKnowledgeRequest struct {
-	KBID         string `json:"kb_id" binding:"required"`
-	Title        string `json:"title" binding:"required,max=200"`
-	Description  string `json:"description" binding:"max=1000"`
-	Type         string `json:"type" binding:"required,oneof=document file url"`
-	Source       string `json:"source" binding:"omitempty,oneof=upload crawler api"`
-	FileName     string `json:"file_name"`
-	FileType     string `json:"file_type"`
-	FilePath     string `json:"file_path"`
-	FileSize     int64  `json:"file_size"`
-	Metadata     string `json:"metadata"`
+	KBID        string `json:"kb_id" binding:"required"`
+	Title       string `json:"title" binding:"required,max=200"`
+	Description string `json:"description" binding:"max=1000"`
+	Type        string `json:"type" binding:"required,oneof=document file url"`
+	Source      string `json:"source" binding:"omitempty,oneof=upload crawler api"`
+	FileName    string `json:"file_name"`
+	FileType    string `json:"file_type"`
+	FilePath    string `json:"file_path"`
+	FileSize    int64  `json:"file_size"`
+	Metadata    string `json:"metadata"`
 }
 
 // UpdateKnowledgeRequest 更新知识条目请求
@@ -197,16 +199,16 @@ type KnowledgeResponse struct {
 
 // ChunkResponse 分块响应
 type ChunkResponse struct {
-	ID          string     `json:"id"`
-	KnowledgeID string     `json:"knowledge_id"`
-	Content     string     `json:"content"`
-	ChunkIndex  int        `json:"chunk_index"`
-	IsEnabled   bool       `json:"is_enabled"`
-	StartAt     int        `json:"start_at"`
-	EndAt       int        `json:"end_at"`
-	ChunkType   string     `json:"chunk_type"`
-	TokenCount  int        `json:"token_count"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          string    `json:"id"`
+	KnowledgeID string    `json:"knowledge_id"`
+	Content     string    `json:"content"`
+	ChunkIndex  int       `json:"chunk_index"`
+	IsEnabled   bool      `json:"is_enabled"`
+	StartAt     int       `json:"start_at"`
+	EndAt       int       `json:"end_at"`
+	ChunkType   string    `json:"chunk_type"`
+	TokenCount  int       `json:"token_count"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // KBSettingResponse 知识库设置响应
@@ -238,4 +240,58 @@ type ChunkListQuery struct {
 	IsEnabled   *bool  `form:"is_enabled"`
 	Page        int    `form:"page" binding:"min=1"`
 	PageSize    int    `form:"page_size" binding:"min=1,max=100"`
+}
+
+// ========================================
+// 知识标签相关类型
+// ========================================
+
+// Tag 知识标签实体
+type Tag struct {
+	ID              int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantID        string     `json:"tenant_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:1"`
+	KnowledgeBaseID int64      `json:"knowledge_base_id" gorm:"not null;index:idx_tenant_kb,priority:2"`
+	Name            string     `json:"name" gorm:"type:varchar(255);not null;index:idx_name"`
+	Color           string     `json:"color,omitempty" gorm:"type:varchar(7)"`
+	SortOrder       int        `json:"sort_order" gorm:"default:0;index:idx_sort_order"`
+	CreatedAt       time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt       time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt       *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+}
+
+func (Tag) TableName() string {
+	return "knowledge_tags"
+}
+
+// CreateTagRequest 创建标签请求
+type CreateTagRequest struct {
+	Name      string `json:"name" binding:"required,min=1,max=255"`
+	Color     string `json:"color" binding:"omitempty,hexcolor,len=7"`
+	SortOrder int    `json:"sort_order"`
+}
+
+// UpdateTagRequest 更新标签请求
+type UpdateTagRequest struct {
+	Name      *string `json:"name" binding:"omitempty,min=1,max=255"`
+	Color     *string `json:"color" binding:"omitempty,hexcolor,len=7"`
+	SortOrder *int    `json:"sort_order"`
+}
+
+// TagResponse 标签响应
+type TagResponse struct {
+	ID              int64     `json:"id"`
+	TenantID        string    `json:"tenant_id"`
+	KnowledgeBaseID int64     `json:"knowledge_base_id"`
+	Name            string    `json:"name"`
+	Color           string    `json:"color"`
+	SortOrder       int       `json:"sort_order"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+}
+
+// TagListQuery 标签查询参数
+type TagListQuery struct {
+	Name     string `form:"name"`
+	Page     int    `form:"page" binding:"min=1"`
+	PageSize int    `form:"page_size" binding:"min=1,max=100"`
 }

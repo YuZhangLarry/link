@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	common_repository "link/internal/common"
 
 	"gorm.io/gorm"
 
-	common_repository "link/internal/common/repository"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
@@ -277,4 +277,3 @@ func (r *messageRepository) CountBySessionID(ctx context.Context, sessionID stri
 // 辅助方法
 // ========================================
 // getTenantIDFromContext 从上下文获取租户ID（在 session.go 中定义）
-

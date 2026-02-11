@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	common_repository "link/internal/common"
 
 	"gorm.io/gorm"
 
-	common_repository "link/internal/common/repository"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
@@ -269,4 +269,85 @@ func (r *chunkRepository) FindChunksWithoutEmbedding(ctx context.Context, kbID s
 	}
 
 	return chunks, nil
+}
+
+// ========================================
+// TagID 相关操作
+// ========================================
+
+// UpdateTagID 更新分块的标签ID
+func (r *chunkRepository) UpdateTagID(ctx context.Context, id string, tagID int64) error {
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Chunk{}).
+		Where("id = ?", id).
+		Update("tag_id", tagID).Error
+}
+
+// RemoveTagID 移除分块的标签ID（设置为0）
+func (r *chunkRepository) RemoveTagID(ctx context.Context, id string) error {
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Chunk{}).
+		Where("id = ?", id).
+		Update("tag_id", 0).Error
+}
+
+// UpdateTagIDBatch 批量更新分块的标签ID
+func (r *chunkRepository) UpdateTagIDBatch(ctx context.Context, ids []string, tagID int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Chunk{}).
+		Where("id IN ?", ids).
+		Update("tag_id", tagID).Error
+}
+
+// RemoveTagIDBatch 批量移除分块的标签ID
+func (r *chunkRepository) RemoveTagIDBatch(ctx context.Context, ids []string, tagID int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Chunk{}).
+		Where("id IN ?", ids).
+		Update("tag_id", tagID).Error
+}
+
+// FindByTagID 根据标签ID查找分块列表
+func (r *chunkRepository) FindByTagID(ctx context.Context, tenantID int64, tagID int64, page, pageSize int) ([]*types.Chunk, int64, error) {
+	var chunks []*types.Chunk
+	var total int64
+
+	db := r.base.WithContext(ctx)
+
+	// 统计总数
+	countQuery := db.Model(&types.Chunk{}).Where("tenant_id = ? AND tag_id = ?", tenantID, tagID)
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("统计分块数量失败: %w", err)
+	}
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	err := db.Where("tenant_id = ? AND tag_id = ?", tenantID, tagID).
+		Order("created_at DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&chunks).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询分块列表失败: %w", err)
+	}
+
+	return chunks, total, nil
+}
+
+// AddTagIDBatch 批量为分块添加标签ID
+func (r *chunkRepository) AddTagIDBatch(ctx context.Context, ids []string, tagID int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Chunk{}).
+		Where("id IN ?", ids).
+		Update("tag_id", tagID).Error
 }

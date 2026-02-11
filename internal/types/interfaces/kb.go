@@ -86,6 +86,25 @@ type KnowledgeRepository interface {
 
 	// FindByFileHash 根据文件哈希查找（去重用）
 	FindByFileHash(ctx context.Context, tenantID int64, fileHash string) (*types.Knowledge, error)
+
+	// ========================================
+	// TagID 相关操作
+	// ========================================
+
+	// UpdateTagID 更新知识条目的标签ID
+	UpdateTagID(ctx context.Context, id string, tagID int64) error
+
+	// RemoveTagID 移除知识条目的标签ID（设置为0）
+	RemoveTagID(ctx context.Context, id string) error
+
+	// RemoveTagIDBatch 批量移除知识条目的标签ID
+	RemoveTagIDBatch(ctx context.Context, ids []string, tagID int64) error
+
+	// FindByTagID 根据标签ID查找知识条目列表
+	FindByTagID(ctx context.Context, tenantID int64, tagID int64, page, pageSize int) ([]*types.Knowledge, int64, error)
+
+	// AddTagIDBatch 批量为知识条目添加标签ID
+	AddTagIDBatch(ctx context.Context, ids []string, tagID int64) error
 }
 
 // ChunkRepository 文档分块仓储接口
@@ -134,6 +153,28 @@ type ChunkRepository interface {
 
 	// CountByKBID 统计知识库的分块数量
 	CountByKBID(ctx context.Context, kbID string) (int64, error)
+
+	// ========================================
+	// TagID 相关操作
+	// ========================================
+
+	// UpdateTagID 更新分块的标签ID
+	UpdateTagID(ctx context.Context, id string, tagID int64) error
+
+	// RemoveTagID 移除分块的标签ID（设置为0）
+	RemoveTagID(ctx context.Context, id string) error
+
+	// UpdateTagIDBatch 批量更新分块的标签ID
+	UpdateTagIDBatch(ctx context.Context, ids []string, tagID int64) error
+
+	// RemoveTagIDBatch 批量移除分块的标签ID
+	RemoveTagIDBatch(ctx context.Context, ids []string, tagID int64) error
+
+	// FindByTagID 根据标签ID查找分块列表
+	FindByTagID(ctx context.Context, tenantID int64, tagID int64, page, pageSize int) ([]*types.Chunk, int64, error)
+
+	// AddTagIDBatch 批量为分块添加标签ID
+	AddTagIDBatch(ctx context.Context, ids []string, tagID int64) error
 }
 
 // KBSettingRepository 知识库设置仓储接口
@@ -155,4 +196,78 @@ type KBSettingRepository interface {
 
 	// Exists 检查设置是否存在
 	Exists(ctx context.Context, kbID string) (bool, error)
+}
+
+// ========================================
+// 知识图谱仓储接口
+// ========================================
+
+// GraphRepository 知识图谱仓储接口
+type GraphRepository interface {
+	// AddGraph 添加图谱数据
+	AddGraph(ctx context.Context, namespace types.NameSpace, graphs []*types.GraphData) error
+
+	// DeleteGraph 删除图谱数据
+	DeleteGraph(ctx context.Context, namespaces []types.NameSpace) error
+
+	// SearchNode 搜索节点
+	SearchNode(ctx context.Context, namespace types.NameSpace, nodes []string) (*types.GraphData, error)
+
+	// SearchPath 搜索路径
+	SearchPath(ctx context.Context, namespace types.NameSpace, startNode, endNode string, maxDepth int) ([]*types.GraphData, error)
+
+	// CheckHealth 检查图谱存储健康状态
+	CheckHealth(ctx context.Context) error
+}
+
+// ========================================
+// 知识标签仓储接口
+// ========================================
+
+// TagRepository 知识标签仓储接口
+type TagRepository interface {
+	// Create 创建标签
+	Create(ctx context.Context, tag *types.Tag) error
+
+	// CreateBatch 批量创建标签
+	CreateBatch(ctx context.Context, tags []*types.Tag) error
+
+	// FindByID 根据ID查找标签
+	FindByID(ctx context.Context, id int64) (*types.Tag, error)
+
+	// FindByKnowledgeBaseID 根据知识库ID查找标签列表
+	FindByKnowledgeBaseID(ctx context.Context, tenantID string, kbID int64, query *types.TagListQuery) ([]*types.Tag, int64, error)
+
+	// FindByTenantID 根据租户ID查找标签列表
+	FindByTenantID(ctx context.Context, tenantID string, page, pageSize int) ([]*types.Tag, int64, error)
+
+	// FindByName 根据名称查找标签
+	FindByName(ctx context.Context, tenantID string, kbID int64, name string) (*types.Tag, error)
+
+	// Update 更新标签
+	Update(ctx context.Context, tag *types.Tag) error
+
+	// Delete 删除标签（软删除）
+	Delete(ctx context.Context, id int64) error
+
+	// DeleteBatch 批量删除标签（软删除）
+	DeleteBatch(ctx context.Context, ids []int64) error
+
+	// DeleteByKnowledgeBaseID 删除知识库的所有标签
+	DeleteByKnowledgeBaseID(ctx context.Context, tenantID string, kbID int64) error
+
+	// Exists 检查标签是否存在
+	Exists(ctx context.Context, tenantID string, kbID int64, name string) (bool, error)
+
+	// CountByKnowledgeBaseID 统计知识库的标签数量
+	CountByKnowledgeBaseID(ctx context.Context, tenantID string, kbID int64) (int64, error)
+
+	// UpdateSortOrder 批量更新排序
+	UpdateSortOrder(ctx context.Context, tagOrders []TagSortOrder) error
+}
+
+// TagSortOrder 标签排序信息
+type TagSortOrder struct {
+	ID        int64 `json:"id"`
+	SortOrder int   `json:"sort_order"`
 }

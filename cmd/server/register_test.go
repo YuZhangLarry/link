@@ -41,9 +41,14 @@ func TestMain(m *testing.M) {
 	}
 
 	db := container.GetDB()
-	userRepo := repository.NewUserRepository(db)
-	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
-	testUserService = service.NewUserService(userRepo, refreshTokenRepo, jwtConfig)
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic(fmt.Sprintf("获取 sql.DB 失败: %v", err))
+	}
+	userRepo := repository.NewUserRepository(sqlDB)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(sqlDB)
+	tenantRepo := repository.NewTenantRepository(db, true)
+	testUserService = service.NewUserService(userRepo, refreshTokenRepo, tenantRepo, jwtConfig)
 
 	// 运行测试
 	code := m.Run()

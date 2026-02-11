@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"fmt"
+	common_repository "link/internal/common"
 
 	"gorm.io/gorm"
 
-	common_repository "link/internal/common/repository"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
@@ -70,8 +70,8 @@ func (r *kbSettingRepository) UpdateRetrievalConfig(ctx context.Context, kbID st
 	result := db.Model(&types.KBSetting{}).
 		Where("kb_id = ?", kbID).
 		Updates(map[string]interface{}{
-			"retrieval_mode":        mode,
-			"similarity_threshold":  threshold,
+			"retrieval_mode":       mode,
+			"similarity_threshold": threshold,
 			"top_k":                topK,
 		})
 

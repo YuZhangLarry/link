@@ -1,4 +1,4 @@
-package common_repository
+package common
 
 import (
 	"time"

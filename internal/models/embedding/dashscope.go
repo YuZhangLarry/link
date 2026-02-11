@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cloudwego/eino/components/embedding"
 	"link/internal/config"
 )
 
@@ -31,14 +32,14 @@ func NewDashScopeEmbedder(cfg *config.EmbeddingConfig) *DashScopeEmbedder {
 		apiKey:  cfg.APIKey,
 		model:   cfg.Model,
 		baseURL: baseURL,
-		client:  &http.Client{
+		client: &http.Client{
 			Timeout: 60 * time.Second,
 		},
 	}
 }
 
-// EmbedStrings 批量向量化文本
-func (e *DashScopeEmbedder) EmbedStrings(ctx context.Context, texts []string) ([][]float64, error) {
+// EmbedStrings 批量向量化文本（实现 eino Embedder 接口）
+func (e *DashScopeEmbedder) EmbedStrings(ctx context.Context, texts []string, opts ...embedding.Option) ([][]float64, error) {
 	if len(texts) == 0 {
 		return nil, fmt.Errorf("texts cannot be empty")
 	}
@@ -46,6 +47,10 @@ func (e *DashScopeEmbedder) EmbedStrings(ctx context.Context, texts []string) ([
 	if e.apiKey == "" {
 		return nil, fmt.Errorf("EMBEDDING_API_KEY is not configured")
 	}
+
+	// TODO: 如果需要支持 eino 的选项（如 WithModel），可以在这里处理
+	// 目前暂时忽略选项
+	_ = opts
 
 	// 构建请求
 	reqBody := e.buildRequest(texts)
@@ -136,9 +141,9 @@ type dashScopeRequest struct {
 }
 
 type dashScopeResponse struct {
-	Data   []dashScopeData   `json:"data"`
-	Usage  dashScopeUsage    `json:"usage"`
-	RequestId string             `json:"request_id"`
+	Data      []dashScopeData `json:"data"`
+	Usage     dashScopeUsage  `json:"usage"`
+	RequestId string          `json:"request_id"`
 }
 
 type dashScopeData struct {
