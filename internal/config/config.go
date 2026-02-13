@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v3"
 	"link/internal/types"
 )
 
@@ -280,4 +281,37 @@ func getEnv(key, defaultValue string) string {
 		return value
 	}
 	return defaultValue
+}
+
+// PromptTemplate 提示词模板
+type PromptTemplate struct {
+	Templates []struct {
+		ID      string `yaml:"id"`
+		Content string `yaml:"content"`
+	} `yaml:"templates"`
+}
+
+// LoadPromptTemplate 加载提示词模板
+func LoadPromptTemplate(templateName string) (string, error) {
+	projectRoot, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get working directory: %w", err)
+	}
+
+	templatePath := filepath.Join(projectRoot, "config", "prompt_templates", templateName+".yaml")
+	content, err := os.ReadFile(templatePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read template file %s: %w", templatePath, err)
+	}
+
+	var pt PromptTemplate
+	if err := yaml.Unmarshal(content, &pt); err != nil {
+		return "", fmt.Errorf("failed to parse template YAML: %w", err)
+	}
+
+	if len(pt.Templates) == 0 {
+		return "", fmt.Errorf("no templates found in %s", templatePath)
+	}
+
+	return pt.Templates[0].Content, nil
 }

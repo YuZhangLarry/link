@@ -235,3 +235,68 @@ func (r *knowledgeRepository) FindByFileHash(ctx context.Context, tenantID int64
 
 	return &knowledge, nil
 }
+
+// ========================================
+// TagID 相关操作
+// ========================================
+
+// UpdateTagID 更新知识条目的标签ID
+func (r *knowledgeRepository) UpdateTagID(ctx context.Context, id string, tagID int64) error {
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Knowledge{}).
+		Where("id = ?", id).
+		Update("tag_id", tagID).Error
+}
+
+// RemoveTagID 移除知识条目的标签ID（设置为0）
+func (r *knowledgeRepository) RemoveTagID(ctx context.Context, id string) error {
+	return r.UpdateTagID(ctx, id, 0)
+}
+
+// RemoveTagIDBatch 批量移除知识条目的标签ID
+func (r *knowledgeRepository) RemoveTagIDBatch(ctx context.Context, ids []string, tagID int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Knowledge{}).
+		Where("id IN ?", ids).
+		Update("tag_id", 0).Error
+}
+
+// FindByTagID 根据标签ID查找知识条目列表
+func (r *knowledgeRepository) FindByTagID(ctx context.Context, tenantID int64, tagID int64, page, pageSize int) ([]*types.Knowledge, int64, error) {
+	var knowledges []*types.Knowledge
+	var total int64
+
+	db := r.base.WithContext(ctx).Model(&types.Knowledge{}).Where("tenant_id = ? AND tag_id = ?", tenantID, tagID)
+
+	// 统计总数
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("统计知识条目数量失败: %w", err)
+	}
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	err := db.Order("created_at DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&knowledges).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("查询知识条目列表失败: %w", err)
+	}
+
+	return knowledges, total, nil
+}
+
+// AddTagIDBatch 批量为知识条目添加标签ID
+func (r *knowledgeRepository) AddTagIDBatch(ctx context.Context, ids []string, tagID int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	db := r.base.WithContext(ctx)
+	return db.Model(&types.Knowledge{}).
+		Where("id IN ?", ids).
+		Update("tag_id", tagID).Error
+}

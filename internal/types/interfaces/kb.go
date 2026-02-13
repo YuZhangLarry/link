@@ -175,6 +175,16 @@ type ChunkRepository interface {
 
 	// AddTagIDBatch 批量为分块添加标签ID
 	AddTagIDBatch(ctx context.Context, ids []string, tagID int64) error
+
+	// ========================================
+	// 图谱关联查询相关操作
+	// ========================================
+
+	// FindByGraphNodes 根据图谱节点名称查找关联的分片
+	FindByGraphNodes(ctx context.Context, kbID string, nodeNames []string) ([]*types.Chunk, error)
+
+	// GetGraphStats 获取图谱关联的统计信息
+	GetGraphStats(ctx context.Context, kbID string) (*GraphStats, error)
 }
 
 // KBSettingRepository 知识库设置仓储接口
@@ -202,13 +212,34 @@ type KBSettingRepository interface {
 // 知识图谱仓储接口
 // ========================================
 
-// GraphRepository 知识图谱仓储接口
-type GraphRepository interface {
+// GraphStats 图谱统计信息
+type GraphStats struct {
+	NodeCount     int64    // 节点数量
+	RelationCount int64    // 关系数量
+	ChunkCount    int64    // 关联的分块数量
+	ChunkIDs      []string // 关联的分块ID列表
+}
+
+// Neo4jGraphRepository Neo4j 图谱仓储（专门负责 Neo4j 操作）
+type Neo4jGraphRepository interface {
 	// AddGraph 添加图谱数据
 	AddGraph(ctx context.Context, namespace types.NameSpace, graphs []*types.GraphData) error
 
+	// AddRelation 添加单个关系
+	AddRelation(ctx context.Context, namespace types.NameSpace, relation *types.GraphRelation) (*types.GraphRelation, error)
+
+	// AddNode 添加单个节点
+	AddNode(ctx context.Context, namespace types.NameSpace, node *types.GraphNode) error
+	// DeleteNode 删除单个节点
+	DeleteNode(ctx context.Context, namespace types.NameSpace, nodeID string) error
+	// DeleteRelation 删除单个关系
+	DeleteRelation(ctx context.Context, namespace types.NameSpace, relationID string) error
+
 	// DeleteGraph 删除图谱数据
 	DeleteGraph(ctx context.Context, namespaces []types.NameSpace) error
+
+	// GetGraph 获取知识库的完整图谱数据
+	GetGraph(ctx context.Context, namespace types.NameSpace) (*types.GraphData, error)
 
 	// SearchNode 搜索节点
 	SearchNode(ctx context.Context, namespace types.NameSpace, nodes []string) (*types.GraphData, error)
@@ -216,9 +247,34 @@ type GraphRepository interface {
 	// SearchPath 搜索路径
 	SearchPath(ctx context.Context, namespace types.NameSpace, startNode, endNode string, maxDepth int) ([]*types.GraphData, error)
 
-	// CheckHealth 检查图谱存储健康状态
+	// CheckHealth 检查 Neo4j 连接健康状态
 	CheckHealth(ctx context.Context) error
+
+	// UpdateNode 更新节点属性
+	UpdateNode(ctx context.Context, namespace types.NameSpace, node *types.GraphNode) error
+
+	// UpdateRelation 更新关系属性，返回更新后的关系
+	UpdateRelation(ctx context.Context, namespace types.NameSpace, relation *types.GraphRelation) (*types.GraphRelation, error)
+
+	// Close 关闭连接
+	Close(ctx context.Context) error
 }
+
+// GraphQueryRepository 图谱查询仓储（负责与知识库的关联查询）
+type GraphQueryRepository interface {
+	// GetChunksByGraphNodes 根据图谱节点名称获取关联的分片
+	GetChunksByGraphNodes(ctx context.Context, kbID string, nodeNames []string) ([]*types.Chunk, error)
+
+	// GetKnowledgeByGraphNodes 根据图谱节点名称获取关联的知识条目
+	GetKnowledgeByGraphNodes(ctx context.Context, kbID string, nodeNames []string) (*types.Knowledge, error)
+
+	// GetGraphStats 获取图谱统计信息
+	GetGraphStats(ctx context.Context, kbID string) (*GraphStats, error)
+}
+
+// GraphRepository 知识图谱仓储接口（向后兼容的别名）
+// Deprecated: 使用 Neo4jGraphRepository 替代
+type GraphRepository = Neo4jGraphRepository
 
 // ========================================
 // 知识标签仓储接口

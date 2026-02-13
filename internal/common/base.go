@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -113,7 +114,15 @@ func (r *BaseRepository) MustGetTenantID(ctx context.Context) int64 {
 
 // Create 创建记录
 func (r *BaseRepository) Create(ctx context.Context, entity interface{}) error {
-	return r.db.WithContext(ctx).Create(entity).Error
+	// 添加调试日志 - 使用反射来检查 ID 字段
+	fmt.Printf("[BaseRepository] Create called, entity type: %T\n", entity)
+	err := r.db.WithContext(ctx).Create(entity).Error
+	if err != nil {
+		fmt.Printf("[BaseRepository] Create error: %v\n", err)
+	} else {
+		fmt.Printf("[BaseRepository] Create success\n")
+	}
+	return err
 }
 
 // FindByID 根据ID查找记录

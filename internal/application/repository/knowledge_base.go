@@ -29,6 +29,8 @@ func NewKnowledgeBaseRepository(db *gorm.DB, tenantEnabled bool) interfaces.Know
 
 // Create 创建知识库
 func (r *knowledgeBaseRepository) Create(ctx context.Context, kb *types.KnowledgeBase) error {
+	// 添加日志
+	fmt.Printf("[Repository] Creating knowledge base: ID=%s, TenantID=%d, Name=%s\n", kb.ID, kb.TenantID, kb.Name)
 	return r.base.Create(ctx, kb)
 }
 
@@ -127,7 +129,7 @@ func (r *knowledgeBaseRepository) UpdateStats(ctx context.Context, kbID string, 
 // Delete 删除知识库（软删除）
 func (r *knowledgeBaseRepository) Delete(ctx context.Context, id string) error {
 	db := r.base.WithContext(ctx)
-	return db.Delete(&types.KnowledgeBase{}, id).Error
+	return db.Where("id = ?", id).Delete(&types.KnowledgeBase{}).Error
 }
 
 // HardDelete 硬删除知识库及其所有关联数据

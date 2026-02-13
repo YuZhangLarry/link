@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -86,9 +88,21 @@ func Auth(userService *service.UserService) gin.HandlerFunc {
 			Role:     "",
 		})
 
-		// 如果Token包含租户ID，也设置到上下文
+		// 从Token获取租户ID并设置到上下文
 		if claims.TenantID > 0 {
 			c.Set(TenantIDKey, claims.TenantID)
+		}
+
+		// 如果header中有X-Tenant-ID，优先使用header中的值
+		if tenantIDHeader := c.GetHeader("X-Tenant-ID"); tenantIDHeader != "" {
+			// 解析tenantID
+			var tenantID int64
+			if _, err := fmt.Sscanf(tenantIDHeader, "%d", &tenantID); err == nil {
+				if tenantID > 0 {
+					c.Set(TenantIDKey, tenantID)
+					log.Printf("[Auth] Using tenant_id from header: %d", tenantID)
+				}
+			}
 		}
 
 		c.Next()

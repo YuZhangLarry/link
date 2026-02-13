@@ -351,3 +351,76 @@ func (r *chunkRepository) AddTagIDBatch(ctx context.Context, ids []string, tagID
 		Where("id IN ?", ids).
 		Update("tag_id", tagID).Error
 }
+
+// ========================================
+// 图谱关联查询相关操作
+// ========================================
+
+// FindByGraphNodes 根据图谱节点名称查找关联的分片
+// 通过分片内容中包含节点名称来查找关联的分片
+func (r *chunkRepository) FindByGraphNodes(ctx context.Context, kbID string, nodeNames []string) ([]*types.Chunk, error) {
+	if len(nodeNames) == 0 {
+		return []*types.Chunk{}, nil
+	}
+
+	db := r.base.WithContext(ctx)
+	var chunks []*types.Chunk
+
+	// 构建查询：查找分片内容中包含任意节点名称的分片
+	query := db.Model(&types.Chunk{}).
+		Where("kb_id = ?", kbID).
+		Where("is_enabled = ?", true)
+
+	// 使用 LIKE 查询匹配节点名称
+	for _, nodeName := range nodeNames {
+		query = query.Or("content LIKE ?", "%"+nodeName+"%")
+	}
+
+	err := query.Order("chunk_index ASC").
+		Limit(500).
+		Find(&chunks).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("查询图谱节点关联分片失败: %w", err)
+	}
+
+	return chunks, nil
+}
+
+// GetGraphStats 获取图谱关联的统计信息
+func (r *chunkRepository) GetGraphStats(ctx context.Context, kbID string) (*interfaces.GraphStats, error) {
+	db := r.base.WithContext(ctx)
+
+	stats := &interfaces.GraphStats{
+		ChunkIDs: []string{},
+	}
+
+	// 统计关联的分块数量
+	err := db.Model(&types.Chunk{}).
+		Where("kb_id = ? AND is_enabled = ?", kbID, true).
+		Count(&stats.ChunkCount).Error
+	if err != nil {
+		return nil, fmt.Errorf("统计分块数量失败: %w", err)
+	}
+
+	// 获取关联的分块ID列表（用于后续图谱查询）
+	var chunks []*types.Chunk
+	err = db.Model(&types.Chunk{}).
+		Where("kb_id = ? AND is_enabled = ?", kbID, true).
+		Order("chunk_index ASC").
+		Limit(1000).
+		Find(&chunks).Error
+	if err != nil {
+		return nil, fmt.Errorf("查询分块ID列表失败: %w", err)
+	}
+
+	for _, chunk := range chunks {
+		stats.ChunkIDs = append(stats.ChunkIDs, chunk.ID)
+	}
+
+	// 节点数和关系数从 Neo4j 获取，这里只返回0作为占位
+	stats.NodeCount = 0
+	stats.RelationCount = 0
+
+	return stats, nil
+}

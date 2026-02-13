@@ -11,18 +11,15 @@ type KnowledgeBase struct {
 	Description           string     `json:"description" gorm:"type:text"`
 	Avatar                string     `json:"avatar" gorm:"type:varchar(500)"`
 	EmbeddingModelID      string     `json:"embedding_model_id" gorm:"type:varchar(64)"`
-	ChunkingConfig        *string    `json:"chunking_config,omitempty" gorm:"type:json"`
-	ImageProcessingConfig *string    `json:"image_processing_config,omitempty" gorm:"type:json"`
+	ChunkingConfig        string     `gorm:"column:chunking_config;type:json;default:{}"`
+	ImageProcessingConfig string     `gorm:"column:image_processing_config;type:json;default:{}"`
 	SummaryModelID        string     `json:"summary_model_id" gorm:"type:varchar(64)"`
 	RerankModelID         string     `json:"rerank_model_id" gorm:"type:varchar(64)"`
-	CosConfig             *string    `json:"cos_config,omitempty" gorm:"type:json"`
-	VLMConfig             *string    `json:"vlm_config,omitempty" gorm:"type:json"`
-	ExtractConfig         *string    `json:"extract_config,omitempty" gorm:"type:json"`
+	CosConfig             string     `gorm:"column:cos_config;type:json;default:{}"`
+	VLMConfig             string     `gorm:"column:vlm_config;type:json;default:{}"`
+	ExtractConfig         string     `gorm:"column:extract_config;type:json;default:{}"`
 	Status                int8       `json:"status" gorm:"type:tinyint;default:1;index:idx_status"`
 	IsPublic              bool       `json:"is_public" gorm:"default:false"`
-	DocumentCount         int        `json:"document_count" gorm:"default:0"`
-	ChunkCount            int        `json:"chunk_count" gorm:"default:0"`
-	StorageSize           int64      `json:"storage_size" gorm:"default:0"`
 	CreatedAt             time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt             time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	DeletedAt             *time.Time `json:"deleted_at,omitempty" gorm:"index"`
@@ -51,8 +48,6 @@ type Knowledge struct {
 	FileSize         int64      `json:"file_size" gorm:"default:0"`
 	FilePath         string     `json:"file_path" gorm:"type:varchar(500)"`
 	FileHash         string     `json:"file_hash" gorm:"type:varchar(64);index:idx_file_hash"`
-	StorageSize      int64      `json:"storage_size" gorm:"default:0"`
-	ChunkCount       int        `json:"chunk_count" gorm:"default:0"`
 	Metadata         *string    `json:"metadata,omitempty" gorm:"type:json"`
 	CreatedAt        time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt        time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
@@ -62,7 +57,7 @@ type Knowledge struct {
 }
 
 func (Knowledge) TableName() string {
-	return "knowledge"
+	return "knowledges"
 }
 
 // Chunk 文档分块实体
@@ -294,4 +289,124 @@ type TagListQuery struct {
 	Name     string `form:"name"`
 	Page     int    `form:"page" binding:"min=1"`
 	PageSize int    `form:"page_size" binding:"min=1,max=100"`
+}
+
+// ========================================
+// 图谱关系类型相关定义
+// ========================================
+
+// RelationType 关系类型
+type RelationType string
+
+const (
+	RelationTypeContains RelationType = "contains" // 包含
+	RelationTypeRelates  RelationType = "relates"  // 关联
+	RelationTypeDepends  RelationType = "depends"  // 依赖
+	RelationTypeBelongs  RelationType = "belongs"  // 属于
+	RelationTypeOwns     RelationType = "owns"     // 拥有
+	RelationTypeAuthor   RelationType = "author"   // 作者
+	RelationTypeAlias    RelationType = "alias"    // 别名
+	RelationTypeOther    RelationType = "other"    // 其他
+)
+
+// RelationTypes 所有关系类型
+var RelationTypes = []RelationType{
+	RelationTypeContains,
+	RelationTypeRelates,
+	RelationTypeDepends,
+	RelationTypeBelongs,
+	RelationTypeOwns,
+	RelationTypeAuthor,
+	RelationTypeAlias,
+	RelationTypeOther,
+}
+
+// IsValidRelationType 检查关系类型是否有效
+func IsValidRelationType(t string) bool {
+	switch RelationType(t) {
+	case RelationTypeContains, RelationTypeRelates, RelationTypeDepends,
+		RelationTypeBelongs, RelationTypeOwns, RelationTypeAuthor,
+		RelationTypeAlias, RelationTypeOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// RelationTypeLabel 获取关系类型的中文标签
+func RelationTypeLabel(t string) string {
+	labels := map[string]string{
+		"contains": "包含",
+		"relates":  "关联",
+		"depends":  "依赖",
+		"belongs":  "属于",
+		"owns":     "拥有",
+		"author":   "作者",
+		"alias":    "别名",
+		"other":    "其他",
+	}
+	if label, ok := labels[t]; ok {
+		return label
+	}
+	return t
+}
+
+// RelationTypeOptions 获取关系类型选项（用于 API 响应）
+func RelationTypeOptions() []RelationTypeOption {
+	return []RelationTypeOption{
+		{Value: "contains", Label: "包含"},
+		{Value: "relates", Label: "关联"},
+		{Value: "depends", Label: "依赖"},
+		{Value: "belongs", Label: "属于"},
+		{Value: "owns", Label: "拥有"},
+		{Value: "author", Label: "作者"},
+		{Value: "alias", Label: "别名"},
+		{Value: "other", Label: "其他"},
+	}
+}
+
+// RelationTypeOption 关系类型选项（用于 API 响应）
+type RelationTypeOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// ========================================
+// 图谱节点和关系相关类型定义
+// ========================================
+
+// NameSpace 命名空间
+type NameSpace struct {
+	TenantID  string // 租户ID (对应 knowledge.tenant_id)
+	KBID      string // 知识库ID (对应 knowledge.kb_id)
+	Knowledge string // 知识条目ID (对应 knowledge.id)
+	Type      string // 知识类型 (如 "document", "faq", "manual" 等)
+}
+
+// GraphData 图数据结构
+type GraphData struct {
+	Node     []*GraphNode     // 节点列表
+	Relation []*GraphRelation // 关系列表
+}
+
+// GraphNode 图节点
+type GraphNode struct {
+	ID         string   `json:"id"`          // 节点唯一标识（UUID）
+	Name       string   `json:"name"`        // 节点名称（实体名称）
+	EntityType string   `json:"entity_type"` // 实体类型
+	Attributes []string `json:"attributes"`  // 节点属性列表
+	Chunks     []string `json:"chunks"`      // 关联的分块ID列表
+}
+
+// GraphRelation 图关系
+type GraphRelation struct {
+	ID             string   `json:"id"`              // 关系唯一标识（UUID）
+	ChunkIDs       []string `json:"chunk_ids"`       // 记录该关系在哪些文档块中被识别到
+	CombinedDegree int      `json:"combined_degree"` // 源实体和目标实体的度数之和
+	Weight         float64  `json:"weight"`          // 关系强度权重，范围1-10，由PMI和Strength组合计算
+	Source         string   `json:"source"`          // 关系起点的实体标题
+	Target         string   `json:"target"`          // 关系终点的实体标题
+	Type           string   `json:"type"`            // 关系类型
+	Description    string   `json:"description"`     // 关系的语义描述（如"depends on", "contains"）
+	Strength       float64  `json:"strength"`        // LLM提取的关系强度评分（1-10）
 }
