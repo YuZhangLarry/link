@@ -444,7 +444,7 @@ func (n *Neo4jRepository) GetGraph(
 			}, nil
 		}
 
-		// 获取节点之间的关系
+		// 获取节点之间的关系 - 使用 COALESCE 处理可能的空值
 		var relQuery string
 		if namespace.Knowledge != "" {
 			// 查询单个知识条目的关系
@@ -452,7 +452,8 @@ func (n *Neo4jRepository) GetGraph(
 				MATCH (n {kb_id: $kb_id})-[r:RELATES_TO]->(m {kb_id: $kb_id})
 				WHERE n.id IN $node_ids
 				RETURN n.id as source_id, n.name as source_name,
-				       r.id as rel_id, r.type as type, r.description as description, r.strength as strength, r.weight as weight,
+				       r.id as rel_id, COALESCE(r.type, '关联') as type, r.description as description,
+				       COALESCE(r.strength, 5.0) as strength, COALESCE(r.weight, 5.0) as weight,
 				       m.id as target_id, m.name as target_name
 				LIMIT 2000
 			`
@@ -462,7 +463,8 @@ func (n *Neo4jRepository) GetGraph(
 				MATCH (n {kb_id: $kb_id})-[r:RELATES_TO]->(m {kb_id: $kb_id})
 				WHERE n.id IN $node_ids
 				RETURN n.id as source_id, n.name as source_name,
-				       r.id as rel_id, r.type as type, r.description as description, r.strength as strength, r.weight as weight,
+				       r.id as rel_id, COALESCE(r.type, '关联') as type, r.description as description,
+				       COALESCE(r.strength, 5.0) as strength, COALESCE(r.weight, 5.0) as weight,
 				       m.id as target_id, m.name as target_name
 				LIMIT 2000
 			`
@@ -505,6 +507,9 @@ func (n *Neo4jRepository) GetGraph(
 				graphRelation := &types.GraphRelation{
 					ID:       relID,
 					ChunkIDs: []string{},
+					Type:     "关联", // 默认关系类型
+					Strength: 5.0,  // 默认强度
+					Weight:   5.0,  // 默认权重
 				}
 
 				// 获取属性（需要 nil 检查）
@@ -516,20 +521,12 @@ func (n *Neo4jRepository) GetGraph(
 				}
 				if relType, ok := record.Get("type"); ok && relType != nil {
 					graphRelation.Type = fmt.Sprintf("%v", relType)
-				} else {
-					log.Printf("[Neo4j] WARNING: type is nil or missing for rel_id=%s", relID)
-					// 尝试从 record.Keys 中调试
-					log.Printf("[Neo4j] record keys: %v", record.Keys)
-					log.Printf("[Neo4j] record values: %v", record.Values)
 				}
 				if description, ok := record.Get("description"); ok && description != nil {
 					graphRelation.Description = fmt.Sprintf("%v", description)
 				}
 				if strength, ok := record.Get("strength"); ok && strength != nil {
 					graphRelation.Strength = convertToFloat64(strength)
-				} else {
-					val, _ := record.Get("strength")
-					log.Printf("[Neo4j] WARNING: strength is nil or missing for rel_id=%s, got type=%T", relID, val)
 				}
 				if weight, ok := record.Get("weight"); ok && weight != nil {
 					graphRelation.Weight = convertToFloat64(weight)
@@ -717,14 +714,24 @@ func (n *Neo4jRepository) SearchNode(
 					if target, ok := rel.Props["target"]; ok {
 						graphRelation.Target = fmt.Sprintf("%v", target)
 					}
+					// 处理 type 字段，提供默认值
+					if relType, ok := rel.Props["type"]; ok && relType != nil {
+						graphRelation.Type = fmt.Sprintf("%v", relType)
+					} else {
+						graphRelation.Type = "关联"
+					}
 					if description, ok := rel.Props["description"]; ok {
 						graphRelation.Description = fmt.Sprintf("%v", description)
 					}
 					if strength, ok := rel.Props["strength"]; ok {
 						graphRelation.Strength = convertToFloat64(strength)
+					} else {
+						graphRelation.Strength = 5.0
 					}
 					if weight, ok := rel.Props["weight"]; ok {
 						graphRelation.Weight = convertToFloat64(weight)
+					} else {
+						graphRelation.Weight = 5.0
 					}
 					if combinedDegree, ok := rel.Props["combined_degree"]; ok {
 						graphRelation.CombinedDegree = int(convertToFloat64(combinedDegree))
@@ -751,6 +758,178 @@ func (n *Neo4jRepository) SearchNode(
 	}
 
 	log.Printf("[Neo4j] Search completed: found %d nodes, %d relations",
+		len(result.(*types.GraphData).Node), len(result.(*types.GraphData).Relation))
+	return result.(*types.GraphData), nil
+}
+
+// SearchNodeV2 搜索节点（改进版 - 直接返回节点名称）
+func (n *Neo4jRepository) SearchNodeV2(
+	ctx context.Context,
+	namespace types.NameSpace,
+	nodes []string,
+) (*types.GraphData, error) {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT RETRIEVE GRAPH - driver is nil")
+		return nil, nil
+	}
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		var knowledgeIDCondition string
+		if namespace.Knowledge != "" {
+			knowledgeIDCondition = " AND n.knowledge_id = $knowledge_id AND m.knowledge_id = $knowledge_id"
+			log.Printf("[Neo4j] SearchNodeV2: querying single knowledge graph: knowledge_id=%s", namespace.Knowledge)
+		} else {
+			knowledgeIDCondition = ""
+			log.Printf("[Neo4j] SearchNodeV2: querying entire KB graph with kb_id: %s", namespace.KBID)
+		}
+
+		// 改进版查询：直接返回节点名称
+		query := `
+			MATCH (n {kb_id: $kb_id})-[r:RELATES_TO]->(m {kb_id: $kb_id})
+			WHERE ANY(nodeText IN $nodes WHERE toLower(n.name) CONTAINS toLower(nodeText))` + knowledgeIDCondition + `
+			RETURN n.id as n_id, n.name as n_name, n.entity_type as n_type,
+			       n.chunks as n_chunks, n.attributes as n_attrs,
+			       r.id as r_id, r.type as r_type, r.description as r_desc,
+			       r.strength as r_strength, r.weight as r_weight, r.chunk_ids as r_chunk_ids,
+			       m.id as m_id, m.name as m_name, m.entity_type as m_type
+			LIMIT 1000
+		`
+
+		params := map[string]interface{}{
+			"nodes": nodes,
+			"kb_id": namespace.KBID,
+		}
+		if namespace.Knowledge != "" {
+			params["knowledge_id"] = namespace.Knowledge
+		}
+
+		result, err := tx.Run(ctx, query, params)
+		if err != nil {
+			return nil, fmt.Errorf("failed to run query: %w", err)
+		}
+
+		graphData := &types.GraphData{
+			Node:     make([]*types.GraphNode, 0),
+			Relation: make([]*types.GraphRelation, 0),
+		}
+		nodeSeen := make(map[string]bool)
+		relSeen := make(map[string]bool)
+
+		for result.Next(ctx) {
+			record := result.Record()
+
+			// 获取节点数据 - 直接从返回的字段读取
+			nIDVal, _ := record.Get("n_id")
+			nNameVal, _ := record.Get("n_name")
+			nTypeVal, _ := record.Get("n_type")
+			mIDVal, _ := record.Get("m_id")
+			mNameVal, _ := record.Get("m_name")
+			mTypeVal, _ := record.Get("m_type")
+
+			if nIDVal == nil || mIDVal == nil {
+				continue
+			}
+
+			// 处理源节点 n
+			nID := fmt.Sprintf("%v", nIDVal)
+			if _, seen := nodeSeen[nID]; !seen {
+				nodeSeen[nID] = true
+				graphNode := &types.GraphNode{
+					ID:         nID,
+					Attributes: []string{},
+					Chunks:     []string{},
+				}
+				if nNameVal != nil {
+					graphNode.Name = fmt.Sprintf("%v", nNameVal)
+				}
+				if nTypeVal != nil {
+					graphNode.EntityType = fmt.Sprintf("%v", nTypeVal)
+				}
+				if nChunks, ok := record.Get("n_chunks"); ok && nChunks != nil {
+					graphNode.Chunks = interfaceListToStringList(nChunks.([]interface{}))
+				}
+				graphData.Node = append(graphData.Node, graphNode)
+			}
+
+			// 处理目标节点 m
+			mID := fmt.Sprintf("%v", mIDVal)
+			if _, seen := nodeSeen[mID]; !seen {
+				nodeSeen[mID] = true
+				graphNode := &types.GraphNode{
+					ID:         mID,
+					Attributes: []string{},
+					Chunks:     []string{},
+				}
+				if mNameVal != nil {
+					graphNode.Name = fmt.Sprintf("%v", mNameVal)
+				}
+				if mTypeVal != nil {
+					graphNode.EntityType = fmt.Sprintf("%v", mTypeVal)
+				}
+				graphData.Node = append(graphData.Node, graphNode)
+			}
+
+			// 处理关系 - 使用节点名称
+			rIDVal, hasR := record.Get("r_id")
+			if !hasR {
+				continue
+			}
+			relID := fmt.Sprintf("%v", rIDVal)
+
+			if _, seen := relSeen[relID]; !seen {
+				relSeen[relID] = true
+
+				graphRelation := &types.GraphRelation{
+					ID:       relID,
+					ChunkIDs: []string{},
+					Type:     "关联",
+					Strength: 5.0,
+					Weight:   5.0,
+				}
+
+				// 直接使用节点名称
+				if nNameVal != nil {
+					graphRelation.Source = fmt.Sprintf("%v", nNameVal)
+				}
+				if mNameVal != nil {
+					graphRelation.Target = fmt.Sprintf("%v", mNameVal)
+				}
+				if rType, ok := record.Get("r_type"); ok && rType != nil {
+					graphRelation.Type = fmt.Sprintf("%v", rType)
+				}
+				if rDesc, ok := record.Get("r_desc"); ok && rDesc != nil {
+					graphRelation.Description = fmt.Sprintf("%v", rDesc)
+				}
+				if rStrength, ok := record.Get("r_strength"); ok && rStrength != nil {
+					graphRelation.Strength = convertToFloat64(rStrength)
+				}
+				if rWeight, ok := record.Get("r_weight"); ok && rWeight != nil {
+					graphRelation.Weight = convertToFloat64(rWeight)
+				}
+				if rChunkIDs, ok := record.Get("r_chunk_ids"); ok && rChunkIDs != nil {
+					graphRelation.ChunkIDs = interfaceListToStringList(rChunkIDs.([]interface{}))
+				}
+
+				graphData.Relation = append(graphData.Relation, graphRelation)
+			}
+		}
+
+		if err := result.Err(); err != nil {
+			return nil, fmt.Errorf("error iterating results: %w", err)
+		}
+
+		return graphData, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] ERROR: search node V2 failed: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[Neo4j] SearchV2 completed: found %d nodes, %d relations",
 		len(result.(*types.GraphData).Node), len(result.(*types.GraphData).Relation))
 	return result.(*types.GraphData), nil
 }

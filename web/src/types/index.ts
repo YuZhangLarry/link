@@ -147,34 +147,55 @@ export interface KnowledgeBase {
   id: string
   name: string
   description?: string
-  type: string
+  avatar?: string
+  is_public?: boolean
   status: number
   created_at: string
   updated_at: string
+  // 统计字段
+  document_count?: number
+  chunk_count?: number
+  storage_size?: number
+  // 数据处理配置（从 kb_settings 表获取）
+  setting?: {
+    chunk_size?: number
+    chunk_overlap?: number
+    graph_enabled?: boolean
+    bm25_enabled?: boolean
+    image_processing_mode?: string
+    extract_mode?: string
+  }
+  // 检索模式数组（从后端返回）
+  retrieval_modes?: string[]
 }
 
 export interface CreateKnowledgeBaseRequest {
   name: string
   description?: string
-  type?: string
-  // 策略配置
-  embedding_model?: string
+  avatar?: string
+  is_public?: boolean
+  // 数据处理配置（存储到 kb_settings 表）
   chunk_size?: number
   chunk_overlap?: number
-  enable_graph?: boolean
-  enable_tag?: boolean
+  graph_enabled?: boolean
+  bm25_enabled?: boolean
+  image_processing_mode?: string  // 'none' | 'ocr' | 'vlm' | 'all'
+  extract_mode?: string  // 'none' | 'rule' | 'llm'
 }
 
 export interface UpdateKnowledgeBaseRequest {
   name?: string
   description?: string
-  type?: string
+  avatar?: string
+  is_public?: boolean
   status?: number
-  embedding_model?: string
+  // 数据处理配置（存储到 kb_settings 表）
   chunk_size?: number
   chunk_overlap?: number
-  enable_graph?: boolean
-  enable_tag?: boolean
+  graph_enabled?: boolean
+  bm25_enabled?: boolean
+  image_processing_mode?: string  // 'none' | 'ocr' | 'vlm' | 'all'
+  extract_mode?: string  // 'none' | 'rule' | 'llm'
 }
 
 export interface KnowledgeBaseStats {
@@ -189,13 +210,12 @@ export interface Knowledge {
   id: string
   kb_id: string
   title: string
-  file_type: string
-  file_size: number
+  type: string
+  storage_size: number
   file_path: string
   parse_status: 'unprocessed' | 'pending' | 'processing' | 'completed' | 'failed'
   enable_status: 'enabled' | 'disabled'
   chunk_count: number
-  error_message?: string
   created_at: string
   processed_at?: string
 }
@@ -210,12 +230,11 @@ export interface UploadKnowledgeFileRequest {
 
 export interface KnowledgeStatus {
   knowledge_id: string
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  parse_status: 'pending' | 'processing' | 'completed' | 'failed'
   enable_status: 'enabled' | 'disabled'
   chunk_count: number
   created_at: string
   processed_at?: string
-  error_message?: string
 }
 
 // 文档分块相关
@@ -225,10 +244,8 @@ export interface Chunk {
   knowledge_id: string
   content: string
   chunk_index: number
-  token_count: number
+  token_count?: number
   embedding_id?: string
-  tags?: string[]
-  metadata?: Record<string, any>
   created_at: string
 }
 

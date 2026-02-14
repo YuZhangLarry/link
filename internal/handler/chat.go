@@ -87,9 +87,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	h.saveAssistantMessage(c.Request.Context(), sessionID, resp)
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "成功",
-		"data":    resp,
+		"code":       0,
+		"message":    "成功",
+		"data":       resp,
 		"session_id": sessionID,
 	})
 }
@@ -260,7 +260,31 @@ func (h *ChatHandler) getUserID(c *gin.Context) int64 {
 
 // getSessionID 获取或创建会话ID
 func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID int64) string {
-	// 尝试从请求头获取会话ID
+	// 📊 诊断：打印 context 中的 tenant_id 和 user_id
+	if tenantID, exists := c.Get("tenant_id"); exists {
+		log.Printf("🔍 [getSessionID] Gin Context tenant_id = %v (type: %T)", tenantID, tenantID)
+	} else {
+		log.Printf("⚠️ [getSessionID] Gin Context 中没有 tenant_id")
+	}
+	if uid, exists := c.Get("user_id"); exists {
+		log.Printf("🔍 [getSessionID] Gin Context user_id = %v (type: %T)", uid, uid)
+	} else {
+		log.Printf("⚠️ [getSessionID] Gin Context 中没有 user_id")
+	}
+	// 检查 request.Context() 中的值
+	if ctxTenantID := c.Request.Context().Value("tenant_id"); ctxTenantID != nil {
+		log.Printf("🔍 [getSessionID] Request.Context tenant_id = %v (type: %T)", ctxTenantID, ctxTenantID)
+	} else {
+		log.Printf("⚠️ [getSessionID] Request.Context 中没有 tenant_id")
+	}
+
+	// 优先从请求体获取会话ID
+	if req.SessionID != "" {
+		log.Printf("📌 [getSessionID] 从请求体获取会话ID: %s", req.SessionID)
+		return req.SessionID
+	}
+
+	// 其次尝试从请求头获取会话ID（兼容旧版）
 	if sessionID := c.GetHeader("X-Session-ID"); sessionID != "" {
 		log.Printf("📌 [getSessionID] 从请求头获取会话ID: %s", sessionID)
 		return sessionID
@@ -278,7 +302,7 @@ func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID
 		return "" // 创建失败返回空字符串
 	}
 
-	log.Printf("✅ [getSessionID] 新会话创建成功: ID=%s", session.ID)
+	log.Printf("✅ [getSessionID] 新会话创建成功: ID=%s, TenantID=%d, UserID=%d", session.ID, session.TenantID, session.UserID)
 	return session.ID
 }
 
@@ -297,7 +321,7 @@ func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID string, req
 		Role:       "user",
 		Content:    req.Content,
 		TokenCount: len(req.Content) / 3, // 简单估算
-		ToolCalls:  "", // 空字符串，数据库层会处理
+		ToolCalls:  "",                   // 空字符串，数据库层会处理
 	})
 	if err != nil {
 		log.Printf("❌ [saveUserMessage] 保存失败: %v", err)
@@ -333,6 +357,14 @@ func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, 
 	sseWriter := chat.NewSSEResponseWriter(c)
 	defer sseWriter.Close()
 
+	// 首先发送 session_id 给前端
+	if sessionID != "" {
+		sessionData := gin.H{"session_id": sessionID}
+		if err := sseWriter.WriteEvent("session", sessionData); err != nil {
+			log.Printf("❌ [handleStreamWithSave] 发送session_id失败: %v", err)
+		}
+	}
+
 	var fullContent string
 	var totalTokenCount int
 	var toolCalls []types.ToolCall
@@ -352,10 +384,13 @@ func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, 
 			return
 		}
 
-		// 累积内容
+		// 累积内容和 TokenCount
 		if event.Event == "content" {
 			fullContent += event.Content
-			totalTokenCount = event.TokenCount
+			// 累加 TokenCount（如果提供了）
+			if event.TokenCount > 0 {
+				totalTokenCount += event.TokenCount
+			}
 		} else if event.Event == "end" && len(event.ToolCalls) > 0 {
 			toolCalls = event.ToolCalls
 		}

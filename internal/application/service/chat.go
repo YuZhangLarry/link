@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"link/internal/agent"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"link/internal/agent/tool"
 	"link/internal/config"
 	"link/internal/models/chat"
 	"link/internal/types"
@@ -17,7 +17,7 @@ import (
 // ChatService 聊天服务
 type ChatService struct {
 	chatConfig *config.ChatConfig
-	agent      *tool.Agent
+	agent      *agent.Agent
 	enableTool bool
 }
 
@@ -30,7 +30,7 @@ func NewChatService(chatConfig *config.ChatConfig) *ChatService {
 }
 
 // NewChatServiceWithAgent 创建带 Agent 的聊天服务
-func NewChatServiceWithAgent(chatConfig *config.ChatConfig, agent *tool.Agent) *ChatService {
+func NewChatServiceWithAgent(chatConfig *config.ChatConfig, agent *agent.Agent) *ChatService {
 	return &ChatService{
 		chatConfig: chatConfig,
 		agent:      agent,
@@ -39,7 +39,7 @@ func NewChatServiceWithAgent(chatConfig *config.ChatConfig, agent *tool.Agent) *
 }
 
 // SetAgent 设置 Agent
-func (s *ChatService) SetAgent(agent *tool.Agent) {
+func (s *ChatService) SetAgent(agent *agent.Agent) {
 	s.agent = agent
 	s.enableTool = true
 }

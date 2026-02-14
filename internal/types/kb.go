@@ -3,26 +3,24 @@ package types
 import "time"
 
 // KnowledgeBase 知识库实体
+// 对应 knowledge_bases 表
 type KnowledgeBase struct {
-	ID                    string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID              int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_id"`
-	UserID                int64      `json:"user_id" gorm:"not null;index:idx_user_id"`
-	Name                  string     `json:"name" gorm:"type:varchar(100);not null"`
-	Description           string     `json:"description" gorm:"type:text"`
-	Avatar                string     `json:"avatar" gorm:"type:varchar(500)"`
-	EmbeddingModelID      string     `json:"embedding_model_id" gorm:"type:varchar(64)"`
-	ChunkingConfig        string     `gorm:"column:chunking_config;type:json;default:{}"`
-	ImageProcessingConfig string     `gorm:"column:image_processing_config;type:json;default:{}"`
-	SummaryModelID        string     `json:"summary_model_id" gorm:"type:varchar(64)"`
-	RerankModelID         string     `json:"rerank_model_id" gorm:"type:varchar(64)"`
-	CosConfig             string     `gorm:"column:cos_config;type:json;default:{}"`
-	VLMConfig             string     `gorm:"column:vlm_config;type:json;default:{}"`
-	ExtractConfig         string     `gorm:"column:extract_config;type:json;default:{}"`
-	Status                int8       `json:"status" gorm:"type:tinyint;default:1;index:idx_status"`
-	IsPublic              bool       `json:"is_public" gorm:"default:false"`
-	CreatedAt             time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt             time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt             *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	ID            string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID      int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_id"`
+	UserID        int64      `json:"user_id" gorm:"not null;index:idx_user_id"`
+	Name          string     `json:"name" gorm:"type:varchar(255);not null"`
+	Description   string     `json:"description" gorm:"type:text"`
+	Avatar        string     `json:"avatar" gorm:"type:varchar(500)"`
+	Status        int8       `json:"status" gorm:"type:tinyint;default:1;index:idx_status"`
+	IsPublic      bool       `json:"is_public" gorm:"default:false"`
+	DocumentCount int        `json:"document_count" gorm:"default:0"`
+	ChunkCount    int        `json:"chunk_count" gorm:"default:0"`
+	StorageSize   int64      `json:"storage_size" gorm:"default:0"`
+	CreatedAt     time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt     time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt     *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	// 关联的设置（非存储字段）
+	Setting *KBSetting `json:"setting,omitempty" gorm:"-"`
 }
 
 func (KnowledgeBase) TableName() string {
@@ -30,30 +28,26 @@ func (KnowledgeBase) TableName() string {
 }
 
 // Knowledge 知识条目实体
+// 对应 knowledges 表
 type Knowledge struct {
-	ID               string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID         int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_kb,priority:1"`
-	KBID             string     `json:"kb_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:2"`
-	UserID           int64      `json:"user_id" gorm:"not null;index:idx_user_id"`
-	Type             string     `json:"type" gorm:"type:varchar(20);not null"`
-	Title            string     `json:"title" gorm:"type:varchar(200);not null"`
-	Description      string     `json:"description" gorm:"type:text"`
-	Source           string     `json:"source" gorm:"type:varchar(20)"`
-	ParseStatus      string     `json:"parse_status" gorm:"type:varchar(20);default:'unprocessed';index:idx_parse_status"`
-	EnableStatus     string     `json:"enable_status" gorm:"type:varchar(20);default:'enabled';index:idx_enable_status"`
-	TagID            int64      `json:"tag_id" gorm:"default:0"` // 关联的标签ID
-	EmbeddingModelID string     `json:"embedding_model_id" gorm:"type:varchar(64)"`
-	FileName         string     `json:"file_name" gorm:"type:varchar(255)"`
-	FileType         string     `json:"file_type" gorm:"type:varchar(50)"`
-	FileSize         int64      `json:"file_size" gorm:"default:0"`
-	FilePath         string     `json:"file_path" gorm:"type:varchar(500)"`
-	FileHash         string     `json:"file_hash" gorm:"type:varchar(64);index:idx_file_hash"`
-	Metadata         *string    `json:"metadata,omitempty" gorm:"type:json"`
-	CreatedAt        time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt        time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt        *time.Time `json:"deleted_at,omitempty" gorm:"index"`
-	ProcessedAt      *time.Time `json:"processed_at,omitempty"`
-	ErrorMessage     string     `json:"error_message" gorm:"type:text"`
+	ID           string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID     int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_kb,priority:1"`
+	TagID        *int64     `json:"tag_id,omitempty" gorm:"default:NULL"` // tag ID
+	KBID         string     `json:"kb_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:2;index:idx_kb_id"`
+	UserID       int64      `json:"user_id" gorm:"not null;index:idx_user_id"`
+	Type         string     `json:"type" gorm:"type:varchar(50);not null"` // document/file/url
+	Title        string     `json:"title" gorm:"type:varchar(255);not null"`
+	Description  string     `json:"description" gorm:"type:text"`
+	Source       string     `json:"source" gorm:"type:varchar(128);not null"` // upload/crawler/api
+	ParseStatus  string     `json:"parse_status" gorm:"type:varchar(50);default:'unprocessed';index:idx_status"`
+	EnableStatus string     `json:"enable_status" gorm:"type:varchar(50);default:'enabled';index:idx_status"`
+	FilePath     string     `json:"file_path" gorm:"type:text"`
+	StorageSize  int64      `json:"storage_size" gorm:"default:0"`
+	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	ProcessedAt  *time.Time `json:"processed_at,omitempty"`
+	ChunkCount   *int       `json:"chunk_count,omitempty" gorm:"default:NULL"`
 }
 
 func (Knowledge) TableName() string {
@@ -61,29 +55,31 @@ func (Knowledge) TableName() string {
 }
 
 // Chunk 文档分块实体
+// 对应 chunks 表
 type Chunk struct {
-	ID             string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID       int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_kb,priority:1"`
-	KBID           string     `json:"kb_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:2;index:idx_kb_id"`
-	KnowledgeID    string     `json:"knowledge_id" gorm:"not null;type:varchar(36);index:idx_knowledge_id"`
-	Content        string     `json:"content" gorm:"type:text;not null"`
-	ChunkIndex     int        `json:"chunk_index" gorm:"not null;index:idx_chunk_index"`
-	IsEnabled      bool       `json:"is_enabled" gorm:"default:true;index:idx_enabled"`
-	StartAt        int        `json:"start_at" gorm:"default:0"`
-	EndAt          int        `json:"end_at" gorm:"default:0"`
-	PreChunkID     *string    `json:"pre_chunk_id,omitempty" gorm:"type:varchar(36)"`
-	NextChunkID    *string    `json:"next_chunk_id,omitempty" gorm:"type:varchar(36)"`
-	ChunkType      string     `json:"chunk_type" gorm:"type:varchar(20);default:'text'"`
-	ParentChunkID  *string    `json:"parent_chunk_id,omitempty" gorm:"type:varchar(36)"`
-	ImageInfo      *string    `json:"image_info,omitempty" gorm:"type:json"`
-	RelationChunks *string    `json:"relation_chunks,omitempty" gorm:"type:json"`
-	EmbeddingID    string     `json:"embedding_id" gorm:"type:varchar(64)"`
-	TokenCount     int        `json:"token_count" gorm:"default:0"`
-	TagID          int64      `json:"tag_id" gorm:"default:0"` // 关联的标签ID
-	Metadata       *string    `json:"metadata,omitempty" gorm:"type:json"`
-	CreatedAt      time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt      time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	DeletedAt      *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	ID                     string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID               int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_kb,priority:1"`
+	TagID                  *int64     `json:"tag_id,omitempty" gorm:"default:NULL"` // tag ID
+	KBID                   string     `json:"kb_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:2;index:idx_kb_id"`
+	KnowledgeID            string     `json:"knowledge_id" gorm:"not null;type:varchar(36);index:idx_knowledge_id"`
+	Content                string     `json:"content" gorm:"type:text;not null"`
+	ChunkIndex             int        `json:"chunk_index" gorm:"not null"`
+	IsEnabled              bool       `json:"is_enabled" gorm:"type:tinyint(1);not null;default:1"`
+	StartAt                int        `json:"start_at" gorm:"not null;default:0"`
+	EndAt                  int        `json:"end_at" gorm:"not null;default:0"`
+	PreChunkID             *string    `json:"pre_chunk_id,omitempty" gorm:"type:varchar(36)"`
+	NextChunkID            *string    `json:"next_chunk_id,omitempty" gorm:"type:varchar(36)"`
+	ChunkType              string     `json:"chunk_type" gorm:"type:varchar(20);not null;default:'text';index:idx_chunk_type"`
+	ParentChunkID          *string    `json:"parent_chunk_id,omitempty" gorm:"type:varchar(36)"`
+	ImageInfo              *string    `json:"image_info,omitempty" gorm:"type:text"`
+	RelationChunks         *string    `json:"relation_chunks,omitempty" gorm:"type:json"`
+	IndirectRelationChunks *string    `json:"indirect_relation_chunks,omitempty" gorm:"type:json"`
+	EmbeddingID            *string    `json:"embedding_id,omitempty" gorm:"type:varchar(100);default:NULL;index:idx_embedding_id"`
+	TokenCount             *int       `json:"token_count,omitempty" gorm:"default:NULL"`
+	Metadata               *string    `json:"metadata,omitempty" gorm:"type:json"`
+	CreatedAt              time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt              time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	DeletedAt              *time.Time `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 func (Chunk) TableName() string {
@@ -91,17 +87,18 @@ func (Chunk) TableName() string {
 }
 
 // KBSetting 知识库设置实体
+// 对应 kb_settings 表
 type KBSetting struct {
-	ID                  int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	KBID                string    `json:"kb_id" gorm:"not null;type:varchar(36);uniqueIndex"`
-	RetrievalMode       string    `json:"retrieval_mode" gorm:"type:varchar(20);default:'vector'"`
-	SimilarityThreshold float64   `json:"similarity_threshold" gorm:"default:0.7"`
-	TopK                int       `json:"top_k" gorm:"default:5"`
-	RerankEnabled       bool      `json:"rerank_enabled" gorm:"default:false"`
-	GraphEnabled        bool      `json:"graph_enabled" gorm:"default:false"`
-	SettingsJSON        *string   `json:"settings_json,omitempty" gorm:"type:json"`
-	CreatedAt           time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt           time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	ID                    int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	KBID                  string    `json:"kb_id" gorm:"not null;type:varchar(36);uniqueIndex:uk_kb_id"`
+	GraphEnabled          bool      `json:"graph_enabled" gorm:"type:tinyint(1);default:0"`
+	BM25Enabled           *bool     `json:"bm25_enabled,omitempty" gorm:"type:tinyint(1)"`
+	ChunkingConfig        *string   `json:"chunking_config,omitempty" gorm:"type:json"`
+	ImageProcessingConfig *string   `json:"image_processing_config,omitempty" gorm:"type:json"`
+	ExtractConfig         *string   `json:"extract_config,omitempty" gorm:"type:json"`
+	SettingsJSON          *string   `json:"settings_json,omitempty" gorm:"type:json"`
+	CreatedAt             time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt             time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (KBSetting) TableName() string {
@@ -110,43 +107,77 @@ func (KBSetting) TableName() string {
 
 // CreateKnowledgeBaseRequest 创建知识库请求
 type CreateKnowledgeBaseRequest struct {
-	Name             string `json:"name" binding:"required,min=1,max=100"`
-	Description      string `json:"description" binding:"max=500"`
-	Avatar           string `json:"avatar"`
-	EmbeddingModelID string `json:"embedding_model_id"`
-	IsPublic         bool   `json:"is_public"`
-	ChunkSize        int    `json:"chunk_size"`
-	ChunkOverlap     int    `json:"chunk_overlap"`
+	Name        string `json:"name" binding:"required,min=1,max=100"`
+	Description string `json:"description" binding:"max=500"`
+	Avatar      string `json:"avatar"`
+	IsPublic    bool   `json:"is_public"`
+	// 检索配置
+	ChunkSize             *int   `json:"chunk_size,omitempty"`
+	ChunkOverlap          *int   `json:"chunk_overlap,omitempty"`
+	GraphEnabled          *bool  `json:"graph_enabled,omitempty"`
+	BM25Enabled           *bool  `json:"bm25_enabled,omitempty"`
+	ImageProcessingConfig string `json:"image_processing_config,omitempty"` // JSON配置
+	ExtractConfig         string `json:"extract_config,omitempty"`          // JSON配置
+	// 向后兼容字段（会转换为 settings_json）
+	RetrievalMode       *string  `json:"retrieval_mode,omitempty"`
+	SimilarityThreshold *float64 `json:"similarity_threshold,omitempty"`
+	TopK                *int     `json:"top_k,omitempty"`
+	RerankEnabled       *bool    `json:"rerank_enabled,omitempty"`
+	EmbeddingModelID    *string  `json:"embedding_model_id,omitempty"`
+	SummaryModelID      *string  `json:"summary_model_id,omitempty"`
+	RerankModelID       *string  `json:"rerank_model_id,omitempty"`
+	CosConfig           string   `json:"cos_config,omitempty"`
+	VLMConfig           string   `json:"vlm_config,omitempty"`
+	ChunkingConfig      string   `json:"chunking_config,omitempty"`
+	// 支持前端传来的 retrieval_modes 数组
+	RetrievalModes []string `json:"retrieval_modes,omitempty"`
 }
 
 // UpdateKnowledgeBaseRequest 更新知识库请求
 type UpdateKnowledgeBaseRequest struct {
-	Name             *string `json:"name" binding:"omitempty,min=1,max=100"`
-	Description      *string `json:"description" binding:"omitempty,max=500"`
-	Avatar           *string `json:"avatar"`
-	EmbeddingModelID *string `json:"embedding_model_id"`
-	SummaryModelID   *string `json:"summary_model_id"`
-	RerankModelID    *string `json:"rerank_model_id"`
-	IsPublic         *bool   `json:"is_public"`
-	Status           *int8   `json:"status" binding:"omitempty,oneof=0 1"`
-	ChunkingConfig   *string `json:"chunking_config"`
+	Name        *string `json:"name" binding:"omitempty,min=1,max=100"`
+	Description *string `json:"description" binding:"omitempty,max=500"`
+	Avatar      *string `json:"avatar"`
+	IsPublic    *bool   `json:"is_public"`
+	Status      *int8   `json:"status" binding:"omitempty,oneof=0 1"`
+	// 检索配置
+	ChunkSize             *int    `json:"chunk_size,omitempty"`
+	ChunkOverlap          *int    `json:"chunk_overlap,omitempty"`
+	GraphEnabled          *bool   `json:"graph_enabled,omitempty"`
+	BM25Enabled           *bool   `json:"bm25_enabled,omitempty"`
+	ImageProcessingConfig *string `json:"image_processing_config,omitempty"`
+	ExtractConfig         *string `json:"extract_config,omitempty"`
+	// 向后兼容字段
+	RetrievalMode       *string  `json:"retrieval_mode,omitempty"`
+	SimilarityThreshold *float64 `json:"similarity_threshold,omitempty"`
+	TopK                *int     `json:"top_k,omitempty"`
+	RerankEnabled       *bool    `json:"rerank_enabled,omitempty"`
+	EmbeddingModelID    *string  `json:"embedding_model_id,omitempty"`
+	SummaryModelID      *string  `json:"summary_model_id,omitempty"`
+	RerankModelID       *string  `json:"rerank_model_id,omitempty"`
+	ChunkingConfig      *string  `json:"chunking_config,omitempty"`
+	CosConfig           *string  `json:"cos_config,omitempty"`
+	VLMConfig           *string  `json:"vlm_config,omitempty"`
+	// 支持前端传来的 retrieval_modes 数组
+	RetrievalModes []string `json:"retrieval_modes,omitempty"`
 }
 
 // KnowledgeBaseResponse 知识库响应
 type KnowledgeBaseResponse struct {
-	ID            string    `json:"id"`
-	TenantID      int64     `json:"tenant_id"`
-	UserID        int64     `json:"user_id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description"`
-	Avatar        string    `json:"avatar"`
-	DocumentCount int       `json:"document_count"`
-	ChunkCount    int       `json:"chunk_count"`
-	StorageSize   int64     `json:"storage_size"`
-	Status        int8      `json:"status"`
-	IsPublic      bool      `json:"is_public"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            string     `json:"id"`
+	TenantID      int64      `json:"tenant_id"`
+	UserID        int64      `json:"user_id"`
+	Name          string     `json:"name"`
+	Description   string     `json:"description"`
+	Avatar        string     `json:"avatar"`
+	DocumentCount int        `json:"document_count"`
+	ChunkCount    int        `json:"chunk_count"`
+	StorageSize   int64      `json:"storage_size"`
+	Status        int8       `json:"status"`
+	IsPublic      bool       `json:"is_public"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Setting       *KBSetting `json:"setting,omitempty"`
 }
 
 // CreateKnowledgeRequest 创建知识条目请求
@@ -208,14 +239,27 @@ type ChunkResponse struct {
 
 // KBSettingResponse 知识库设置响应
 type KBSettingResponse struct {
-	ID                  int64     `json:"id"`
-	KBID                string    `json:"kb_id"`
-	RetrievalMode       string    `json:"retrieval_mode"`
-	SimilarityThreshold float64   `json:"similarity_threshold"`
-	TopK                int       `json:"top_k"`
-	RerankEnabled       bool      `json:"rerank_enabled"`
-	GraphEnabled        bool      `json:"graph_enabled"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID   int64  `json:"id"`
+	KBID string `json:"kb_id"`
+	// 检索配置
+	RetrievalMode       string  `json:"retrieval_mode"`
+	SimilarityThreshold float64 `json:"similarity_threshold"`
+	TopK                int     `json:"top_k"`
+	RerankEnabled       bool    `json:"rerank_enabled"`
+	GraphEnabled        bool    `json:"graph_enabled"`
+	// 模型配置
+	EmbeddingModelID string `json:"embedding_model_id,omitempty"`
+	SummaryModelID   string `json:"summary_model_id,omitempty"`
+	RerankModelID    string `json:"rerank_model_id,omitempty"`
+	// 处理配置
+	ChunkingConfig        string `json:"chunking_config,omitempty"`
+	ImageProcessingConfig string `json:"image_processing_config,omitempty"`
+	CosConfig             string `json:"cos_config,omitempty"`
+	VLMConfig             string `json:"vlm_config,omitempty"`
+	ExtractConfig         string `json:"extract_config,omitempty"`
+	// 扩展字段
+	SettingsJSON *string   `json:"settings_json,omitempty"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // KnowledgeListQuery 知识条目查询参数
@@ -242,13 +286,14 @@ type ChunkListQuery struct {
 // ========================================
 
 // Tag 知识标签实体
+// 对应 knowledge_tags 表
 type Tag struct {
 	ID              int64      `json:"id" gorm:"primaryKey;autoIncrement"`
 	TenantID        string     `json:"tenant_id" gorm:"not null;type:varchar(36);index:idx_tenant_kb,priority:1"`
 	KnowledgeBaseID int64      `json:"knowledge_base_id" gorm:"not null;index:idx_tenant_kb,priority:2"`
 	Name            string     `json:"name" gorm:"type:varchar(255);not null;index:idx_name"`
-	Color           string     `json:"color,omitempty" gorm:"type:varchar(7)"`
-	SortOrder       int        `json:"sort_order" gorm:"default:0;index:idx_sort_order"`
+	Color           *string    `json:"color,omitempty" gorm:"type:varchar(7)"`
+	SortOrder       int        `json:"sort_order" gorm:"default:0"`
 	CreatedAt       time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
 	DeletedAt       *time.Time `json:"deleted_at,omitempty" gorm:"index"`
@@ -409,4 +454,97 @@ type GraphRelation struct {
 	Type           string   `json:"type"`            // 关系类型
 	Description    string   `json:"description"`     // 关系的语义描述（如"depends on", "contains"）
 	Strength       float64  `json:"strength"`        // LLM提取的关系强度评分（1-10）
+}
+
+// ========================================
+// 检索设置相关类型（独立表）
+// ========================================
+
+// RetrievalSetting 检索设置实体
+// 对应 retrieval_settings 表 (注意：表使用 session_id 而非 kb_id)
+type RetrievalSetting struct {
+	ID        int64  `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantID  int64  `json:"tenant_id" gorm:"not null;index:idx_kb_tenant"`
+	SessionID *int64 `json:"session_id,omitempty" gorm:"default:NULL"` // 对话ID（bigint）
+
+	// 向量检索配置
+	VectorTopK      *int     `json:"vector_top_k,omitempty" gorm:"default:5"`
+	VectorThreshold *float64 `json:"vector_threshold,omitempty" gorm:"default:0.7"`
+	VectorModelID   *string  `json:"vector_model_id,omitempty" gorm:"type:varchar(64)"`
+
+	// BM25检索配置
+	BM25Enable *bool `json:"bm25_enable,omitempty" gorm:"type:tinyint(1)"`
+	BM25TopK   *int  `json:"bm25_top_k,omitempty" gorm:"default:5"`
+
+	// 图谱检索配置
+	GraphEnabled     *bool    `json:"graph_enabled,omitempty" gorm:"type:tinyint(1);default:0"`
+	GraphTopK        *int     `json:"graph_top_k,omitempty" gorm:"default:5"`
+	GraphMinStrength *float64 `json:"graph_min_strength,omitempty" gorm:"default:1"`
+
+	// 混合检索配置
+	HybridAlpha         *number `json:"hybrid_alpha,omitempty" gorm:"default:0.5"` // 向量权重(0-1)
+	HybridRerankEnabled *bool   `json:"hybrid_rerank_enabled,omitempty" gorm:"type:tinyint(1);default:0"`
+
+	// 网络搜索配置
+	WebEnabled     *bool `json:"web_enabled,omitempty" gorm:"type:tinyint(1);default:0"`
+	WebSearchDepth *int  `json:"web_search_depth,omitempty" gorm:"default:1"`
+
+	// 重排序配置
+	RerankEnabled *bool `json:"rerank_enabled,omitempty" gorm:"type:tinyint(1);default:0"`
+
+	// 高级配置
+	AdvancedConfig *string `json:"advanced_config,omitempty" gorm:"type:json"`
+
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// number 用于表示数值类型（兼容 float64 和 int）
+type number float64
+
+func (RetrievalSetting) TableName() string {
+	return "retrieval_settings"
+}
+
+// RetrievalSettingResponse 检索设置响应
+type RetrievalSettingResponse struct {
+	ID       int64  `json:"id"`
+	KBID     string `json:"kb_id"`
+	TenantID int64  `json:"tenant_id"`
+
+	// 检索模式配置
+	DefaultMode    string   `json:"default_mode"`
+	AvailableModes []string `json:"available_modes,omitempty"`
+
+	// 向量检索配置
+	VectorTopK      int     `json:"vector_top_k"`
+	VectorThreshold float64 `json:"vector_threshold"`
+	VectorModelID   string  `json:"vector_model_id,omitempty"`
+
+	// BM25检索配置
+	BM25TopK int `json:"bm25_top_k"`
+
+	// 图谱检索配置
+	GraphEnabled     bool    `json:"graph_enabled"`
+	GraphTopK        int     `json:"graph_top_k"`
+	GraphMinStrength float64 `json:"graph_min_strength"`
+
+	// 混合检索配置
+	HybridAlpha         float64 `json:"hybrid_alpha"`
+	HybridRerankEnabled bool    `json:"hybrid_rerank_enabled"`
+
+	// 网络搜索配置
+	WebEnabled     bool   `json:"web_enabled"`
+	WebTopK        int    `json:"web_top_k"`
+	WebEngine      string `json:"web_engine,omitempty"`
+	WebSearchDepth int    `json:"web_search_depth"`
+
+	// 重排序配置
+	RerankEnabled bool   `json:"rerank_enabled"`
+	RerankModelID string `json:"rerank_model_id,omitempty"`
+
+	// 高级配置
+	AdvancedConfig map[string]interface{} `json:"advanced_config,omitempty"`
+
+	UpdatedAt time.Time `json:"updated_at"`
 }

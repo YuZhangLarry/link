@@ -10,6 +10,14 @@ import type {
   RelationTypeOption
 } from '@/types'
 
+// 后端统一返回格式：{ message: "success", data: ... }
+// 注意：响应拦截器直接返回后端响应，不额外包装
+type GraphApiResponse = { message: string; data: GraphData }
+type NodeDetailApiResponse = { message: string; data: NodeDetailResponse }
+type OperationApiResponse = { message: string; data: any }
+type RelationTypesApiResponse = { message: string; data: RelationTypeOption[] }
+type MessageApiResponse = { message: string }
+
 /**
  * 图谱相关API
  */
@@ -17,28 +25,28 @@ export const graphApi = {
   /**
    * 获取知识库图谱数据
    */
-  getGraph(kbId: string) {
+  getGraph(kbId: string): Promise<GraphApiResponse> {
     return http.get<GraphData>(`/knowledge-bases/${kbId}/graph`)
   },
 
   /**
    * 搜索节点
    */
-  searchNode(kbId: string, data: GraphSearchRequest) {
+  searchNode(kbId: string, data: GraphSearchRequest): Promise<GraphApiResponse> {
     return http.post<GraphData>(`/knowledge-bases/${kbId}/graph/search`, data)
   },
 
   /**
    * 获取节点详情
    */
-  getNodeDetail(kbId: string, nodeId: string) {
+  getNodeDetail(kbId: string, nodeId: string): Promise<NodeDetailApiResponse> {
     return http.get<NodeDetailResponse>(`/knowledge-bases/${kbId}/graph/nodes/${nodeId}`)
   },
 
   /**
    * 添加节点
    */
-  addNode(kbId: string, data: AddNodeRequest) {
+  addNode(kbId: string, data: AddNodeRequest): Promise<OperationApiResponse> {
     return http.post<{ message: string; data: any }>(
       `/knowledge-bases/${kbId}/graph/nodes`,
       data
@@ -48,7 +56,7 @@ export const graphApi = {
   /**
    * 添加关系
    */
-  addRelation(kbId: string, data: AddRelationRequest) {
+  addRelation(kbId: string, data: AddRelationRequest): Promise<OperationApiResponse> {
     return http.post<{ message: string; data: any }>(
       `/knowledge-bases/${kbId}/graph/relations`,
       data
@@ -58,7 +66,7 @@ export const graphApi = {
   /**
    * 更新节点
    */
-  updateNode(kbId: string, nodeId: string, data: UpdateNodeRequest) {
+  updateNode(kbId: string, nodeId: string, data: UpdateNodeRequest): Promise<OperationApiResponse> {
     return http.put<{ message: string; data: any }>(
       `/knowledge-bases/${kbId}/graph/nodes/${nodeId}`,
       data
@@ -68,7 +76,7 @@ export const graphApi = {
   /**
    * 更新关系
    */
-  updateRelation(kbId: string, relationId: string, data: UpdateRelationRequest) {
+  updateRelation(kbId: string, relationId: string, data: UpdateRelationRequest): Promise<OperationApiResponse> {
     return http.put<{ message: string; data: any }>(
       `/knowledge-bases/${kbId}/graph/relations/${relationId}`,
       data
@@ -78,14 +86,14 @@ export const graphApi = {
   /**
    * 删除图谱
    */
-  deleteGraph(kbId: string) {
+  deleteGraph(kbId: string): Promise<MessageApiResponse> {
     return http.delete<{ message: string }>(`/knowledge-bases/${kbId}/graph`)
   },
 
   /**
    * 删除节点
    */
-  deleteNode(kbId: string, nodeId: string) {
+  deleteNode(kbId: string, nodeId: string): Promise<MessageApiResponse> {
     return http.delete<{ message: string }>(
       `/knowledge-bases/${kbId}/graph/nodes/${nodeId}`
     )
@@ -94,7 +102,7 @@ export const graphApi = {
   /**
    * 删除关系
    */
-  deleteRelation(kbId: string, relationId: string) {
+  deleteRelation(kbId: string, relationId: string): Promise<MessageApiResponse> {
     return http.delete<{ message: string }>(
       `/knowledge-bases/${kbId}/graph/relations/${relationId}`
     )
@@ -103,7 +111,7 @@ export const graphApi = {
   /**
    * 获取关系类型选项
    */
-  getRelationTypes(kbId: string) {
+  getRelationTypes(kbId: string): Promise<RelationTypesApiResponse> {
     return http.get<{ message: string; data: RelationTypeOption[] }>(
       `/knowledge-bases/${kbId}/graph/relation-types`
     )

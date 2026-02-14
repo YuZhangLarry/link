@@ -42,12 +42,8 @@ func (r *kbSettingRepository) FindByKBID(ctx context.Context, kbID string) (*typ
 	if err == gorm.ErrRecordNotFound {
 		// 如果没有找到，返回默认设置
 		return &types.KBSetting{
-			KBID:                kbID,
-			RetrievalMode:       "vector",
-			SimilarityThreshold: 0.7,
-			TopK:                5,
-			RerankEnabled:       false,
-			GraphEnabled:        false,
+			KBID:         kbID,
+			GraphEnabled: false,
 		}, nil
 	}
 	if err != nil {
@@ -62,46 +58,13 @@ func (r *kbSettingRepository) Update(ctx context.Context, setting *types.KBSetti
 	return r.base.Update(ctx, setting)
 }
 
-// UpdateRetrievalConfig 更新检索配置
-func (r *kbSettingRepository) UpdateRetrievalConfig(ctx context.Context, kbID string, mode string, threshold float64, topK int) error {
-	db := r.base.WithContext(ctx)
-
-	// 先尝试更新
-	result := db.Model(&types.KBSetting{}).
-		Where("kb_id = ?", kbID).
-		Updates(map[string]interface{}{
-			"retrieval_mode":       mode,
-			"similarity_threshold": threshold,
-			"top_k":                topK,
-		})
-
-	if result.Error != nil {
-		return fmt.Errorf("更新检索配置失败: %w", result.Error)
-	}
-
-	// 如果没有更新任何行，创建新记录
-	if result.RowsAffected == 0 {
-		setting := &types.KBSetting{
-			KBID:                kbID,
-			RetrievalMode:       mode,
-			SimilarityThreshold: threshold,
-			TopK:                topK,
-			RerankEnabled:       false,
-			GraphEnabled:        false,
-		}
-		return r.Create(ctx, setting)
-	}
-
-	return nil
-}
-
 // Delete 删除设置
 func (r *kbSettingRepository) Delete(ctx context.Context, kbID string) error {
 	db := r.base.WithContext(ctx)
 	return db.Where("kb_id = ?", kbID).Delete(&types.KBSetting{}).Error
 }
 
-// Exists 检查设置是否存在
+// Exists 查找设置是否存在
 func (r *kbSettingRepository) Exists(ctx context.Context, kbID string) (bool, error) {
 	var count int64
 	err := r.base.WithContext(ctx).
@@ -127,31 +90,6 @@ func (r *kbSettingRepository) GetOrCreate(ctx context.Context, kbID string) (*ty
 	}
 
 	return setting, nil
-}
-
-// UpdateRerankConfig 更新重排序配置
-func (r *kbSettingRepository) UpdateRerankConfig(ctx context.Context, kbID string, enabled bool) error {
-	db := r.base.WithContext(ctx)
-
-	result := db.Model(&types.KBSetting{}).
-		Where("kb_id = ?", kbID).
-		Update("rerank_enabled", enabled)
-
-	if result.Error != nil {
-		return fmt.Errorf("更新重排序配置失败: %w", result.Error)
-	}
-
-	// 如果没有更新任何行，创建新记录
-	if result.RowsAffected == 0 {
-		setting, err := r.FindByKBID(ctx, kbID)
-		if err != nil {
-			return err
-		}
-		setting.RerankEnabled = enabled
-		return r.Update(ctx, setting)
-	}
-
-	return nil
 }
 
 // UpdateGraphConfig 更新知识图谱配置
@@ -198,11 +136,7 @@ func (r *kbSettingRepository) BatchGetSettings(ctx context.Context, kbIDs []stri
 
 	// 为没有设置的知识库添加默认设置
 	defaultSetting := &types.KBSetting{
-		RetrievalMode:       "vector",
-		SimilarityThreshold: 0.7,
-		TopK:                5,
-		RerankEnabled:       false,
-		GraphEnabled:        false,
+		GraphEnabled: false,
 	}
 
 	for _, kbID := range kbIDs {
@@ -214,4 +148,22 @@ func (r *kbSettingRepository) BatchGetSettings(ctx context.Context, kbIDs []stri
 	}
 
 	return result, nil
+}
+
+// UpdateRetrievalConfig 更新检索配置（存根实现，使用 settings_json）
+func (r *kbSettingRepository) UpdateRetrievalConfig(ctx context.Context, kbID string, mode string, threshold float64, topK int) error {
+	// TODO: 实现检索配置更新逻辑
+	return nil
+}
+
+// UpdateModelConfig 更新模型配置（存根实现）
+func (r *kbSettingRepository) UpdateModelConfig(ctx context.Context, kbID string, embeddingModelID, summaryModelID, rerankModelID string) error {
+	// TODO: 实现模型配置更新逻辑
+	return nil
+}
+
+// UpdateProcessingConfig 更新处理配置（存根实现）
+func (r *kbSettingRepository) UpdateProcessingConfig(ctx context.Context, kbID string, chunkingConfig, imageProcessingConfig, cosConfig, vlmConfig, extractConfig string) error {
+	// TODO: 实现处理配置更新逻辑
+	return nil
 }

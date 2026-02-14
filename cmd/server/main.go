@@ -69,16 +69,17 @@ func main() {
 	knowledgeRepo := repository.NewKnowledgeRepository(gormDB.DB, true)
 	chunkRepo := repository.NewChunkRepository(gormDB.DB, true)
 	kbSettingRepo := repository.NewKBSettingRepository(gormDB.DB, true)
+	modelRepo := repository.NewModelRepository(gormDB.DB)
 
 	// 初始化 Service
 	tenantService := repoService.NewTenantService(tenantRepo)
 	userService := repoService.NewUserService(userRepo, refreshTokenRepo, tenantRepo, cfg.JWT)
 	chatService := repoService.NewChatService(cfg.Chat)
 	messageService := repoService.NewMessageService(messageRepo)
-	sessionService := repoService.NewSessionService(sessionRepo)
+	sessionService := repoService.NewSessionService(sessionRepo, messageRepo)
 
 	// 初始化知识库Service
-	kbBaseService := repoService.NewKnowledgeBaseService(kbBaseRepo, knowledgeRepo, chunkRepo, gormDB.DB)
+	kbBaseService := repoService.NewKnowledgeBaseService(kbBaseRepo, kbSettingRepo, knowledgeRepo, chunkRepo, gormDB.DB)
 	knowledgeService := repoService.NewKnowledgeService(knowledgeRepo, chunkRepo, kbSettingRepo, gormDB.DB)
 
 	// 初始化 Graph Service（使用 neo4j retriever 的仓储，确保写入和查询一致）
@@ -102,9 +103,9 @@ func main() {
 			graphRepo := neo4j.NewNeo4jRepository(driver)
 			// 创建图谱查询仓储（与知识库的关联查询）
 			graphQueryRepo := repository.NewGraphQueryRepository(gormDB.DB, true)
-			// 使用包含查询仓储的构造函数
-			graphService = repoService.NewGraphServiceWithQuery(graphRepo, graphQueryRepo)
-			log.Println("✅ Graph Service 初始化成功 (使用 neo4j retriever 仓储 + 图谱查询仓储)")
+			// 使用包含chunk仓储的构造函数
+			graphService = repoService.NewGraphServiceWithChunks(graphRepo, graphQueryRepo, chunkRepo)
+			log.Println("✅ Graph Service 初始化成功 (使用 neo4j retriever 仓储 + 图谱查询仓储 + chunk仓储)")
 		}
 	}
 
@@ -138,6 +139,7 @@ func main() {
 	messageHandler := handler.NewMessageHandler(messageService)
 	sessionHandler := handler.NewSessionHandler(sessionService)
 	kbBaseHandler := handler.NewKnowledgeBaseHandler(kbBaseService)
+	modelHandler := handler.NewModelHandler(modelRepo)
 
 	// 初始化图谱Handler
 	var graphHandler *handler.GraphHandler
@@ -160,6 +162,7 @@ func main() {
 			embedder,
 			container.MilvusClient,
 			chunkConfig,
+			kbSettingRepo,
 		)
 		log.Println("✅ Knowledge Handler 初始化成功")
 	} else {
@@ -223,14 +226,23 @@ func main() {
 			user.GET("/profile", authHandler.GetProfile)
 		}
 
-		// 聊天路由
+		// 模型路由（需要认证）
+		models := api.Group("/models")
+		models.Use(authMiddleware, contextToRequest)
+		{
+			models.GET("", modelHandler.GetList)
+			models.GET("/:id", modelHandler.GetByID)
+		}
+
+		// 聊天路由（需要认证）
 		chat := api.Group("/chat")
+		chat.Use(authMiddleware, contextToRequest)
 		{
 			chat.POST("", chatHandler.Chat)              // 非流式聊天
 			chat.POST("/stream", chatHandler.ChatStream) // 流式聊天
 		}
 
-		// 聊天路由（需要认证）
+		// 聊天路由（需要认证）- 保留兼容
 		chatAuth := api.Group("/chat/auth")
 		chatAuth.Use(authMiddleware, contextToRequest)
 		{

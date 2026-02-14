@@ -38,7 +38,7 @@
 
           <el-descriptions :column="2" border>
             <el-descriptions-item label="知识库名称">{{ knowledgeBase?.name }}</el-descriptions-item>
-            <el-descriptions-item label="类型">{{ knowledgeBase?.type || '通用' }}</el-descriptions-item>
+            <el-descriptions-item label="类型">通用</el-descriptions-item>
             <el-descriptions-item label="创建时间">
               {{ formatDateTime(knowledgeBase?.created_at) }}
             </el-descriptions-item>
@@ -76,10 +76,10 @@
             style="width: 100%"
           >
             <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
-            <el-table-column prop="file_type" label="类型" width="100" />
-            <el-table-column prop="file_size" label="大小" width="120">
+            <el-table-column prop="type" label="类型" width="100" />
+            <el-table-column prop="storage_size" label="大小" width="120">
               <template #default="{ row }">
-                {{ formatFileSize(row.file_size) }}
+                {{ formatFileSize(row.storage_size) }}
               </template>
             </el-table-column>
             <el-table-column prop="chunk_count" label="分块数" width="100">
@@ -168,14 +168,6 @@
                 </div>
                 <div class="result-footer">
                   <el-text size="small" type="info">来源: {{ result.knowledge_title }}</el-text>
-                  <el-tag
-                    v-for="tag in result.tags"
-                    :key="tag"
-                    size="small"
-                    style="margin-left: 8px"
-                  >
-                    {{ tag }}
-                  </el-tag>
                 </div>
               </div>
             </div>
@@ -214,13 +206,6 @@
             <el-table-column prop="chunk_index" label="序号" width="80" />
             <el-table-column prop="content" label="内容" min-width="400" show-overflow-tooltip />
             <el-table-column prop="token_count" label="Token数" width="100" />
-            <el-table-column label="标签" width="200">
-              <template #default="{ row }">
-                <el-tag v-for="tag in row.tags" :key="tag" size="small" style="margin-right: 4px">
-                  {{ tag }}
-                </el-tag>
-              </template>
-            </el-table-column>
             <el-table-column label="操作" width="120">
               <template #default="{ row }">
                 <el-button link type="primary" @click="viewChunkDetail(row)">
@@ -237,7 +222,10 @@
       <!-- 设置 -->
       <el-tab-pane label="设置" name="settings">
         <div class="settings-section" v-loading="settingsLoading">
-          <el-form :model="settingsForm" label-width="120px" style="max-width: 600px">
+          <el-form :model="settingsForm" label-width="140px" style="max-width: 700px">
+            <!-- 基本信息 -->
+            <el-divider content-position="left">基本信息</el-divider>
+
             <el-form-item label="知识库名称">
               <el-input v-model="settingsForm.name" placeholder="请输入知识库名称" />
             </el-form-item>
@@ -259,15 +247,11 @@
               />
             </el-form-item>
 
-            <el-divider content-position="left">策略配置</el-divider>
-
-            <el-form-item label="向量模型">
-              <el-select v-model="settingsForm.embedding_model" style="width: 100%">
-                <el-option label="BGE-M3" value="bge-m3" />
-                <el-option label="BGE-Large" value="bge-large" />
-                <el-option label="Text2Vec" value="text2vec" />
-              </el-select>
-            </el-form-item>
+            <!-- 数据处理配置 -->
+            <el-divider content-position="left">数据处理配置</el-divider>
+            <el-text type="info" size="small" style="margin-bottom: 16px">
+              这些配置控制数据如何被清洗、分块和索引。检索配置请在对话设置中调整。
+            </el-text>
 
             <el-form-item label="分块大小">
               <el-input-number
@@ -275,7 +259,10 @@
                 :min="128"
                 :max="2048"
                 :step="64"
-              />
+                style="width: 100%"
+              >
+                <template #append>字符</template>
+              </el-input-number>
             </el-form-item>
 
             <el-form-item label="分块重叠">
@@ -284,23 +271,83 @@
                 :min="0"
                 :max="512"
                 :step="32"
+                style="width: 100%"
+              >
+                <template #append>字符</template>
+              </el-input-number>
+            </el-form-item>
+
+            <el-form-item label="构建知识图谱">
+              <el-switch
+                v-model="settingsForm.graph_enabled"
+                active-text="启用"
+                inactive-text="禁用"
               />
+              <template #extra>
+                <el-text size="small" type="info">启用后将自动构建实体关系图谱</el-text>
+              </template>
             </el-form-item>
 
-            <el-form-item label="启用图谱">
-              <el-switch v-model="settingsForm.enable_graph" />
+            <el-form-item label="构建BM25索引">
+              <el-switch
+                v-model="settingsForm.bm25_enabled"
+                active-text="启用"
+                inactive-text="禁用"
+              />
+              <template #extra>
+                <el-text size="small" type="info">启用后将构建稀疏向量索引用于关键词检索</el-text>
+              </template>
             </el-form-item>
 
-            <el-form-item label="启用标签">
-              <el-switch v-model="settingsForm.enable_tag" />
+            <el-form-item label="图片处理配置">
+              <el-select
+                v-model="settingsForm.image_processing_mode"
+                placeholder="选择图片处理方式"
+                style="width: 100%"
+              >
+                <el-option label="不处理" value="none" />
+                <el-option label="提取文字" value="ocr" />
+                <el-option label="视觉描述" value="vlm" />
+                <el-option label="全部" value="all" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="实体抽取配置">
+              <el-select
+                v-model="settingsForm.extract_mode"
+                placeholder="选择实体抽取方式"
+                style="width: 100%"
+              >
+                <el-option label="不抽取" value="none" />
+                <el-option label="规则抽取" value="rule" />
+                <el-option label="AI抽取" value="llm" />
+              </el-select>
             </el-form-item>
 
             <el-form-item>
               <el-button type="primary" @click="saveSettings" :loading="settingsSaving">
                 保存设置
               </el-button>
+              <el-button @click="resetSettings" style="margin-left: 12px">
+                重置
+              </el-button>
             </el-form-item>
           </el-form>
+
+          <!-- 配置说明 -->
+          <el-alert
+            title="配置说明"
+            type="info"
+            :closable="false"
+            style="margin-top: 24px"
+          >
+            <ul style="margin: 0; padding-left: 20px;">
+              <li><strong>分块配置</strong>：控制文档如何被切分成小块，影响检索精度和上下文完整性</li>
+              <li><strong>知识图谱</strong>：启用后将从文档中自动抽取实体和关系，支持图谱检索</li>
+              <li><strong>BM25索引</strong>：启用后构建稀疏向量，支持关键词精确匹配</li>
+              <li><strong>检索设置</strong>：TopK、相似度阈值等检索参数请在<strong>对话设置</strong>中调整，支持跨知识库检索</li>
+            </ul>
+          </el-alert>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -343,12 +390,7 @@
     <el-dialog v-model="showChunkDialog" title="分块详情" width="700px">
       <el-descriptions :column="2" border v-if="currentChunk">
         <el-descriptions-item label="序号">{{ currentChunk.chunk_index }}</el-descriptions-item>
-        <el-descriptions-item label="Token数">{{ currentChunk.token_count }}</el-descriptions-item>
-        <el-descriptions-item label="标签" :span="2">
-          <el-tag v-for="tag in currentChunk.tags" :key="tag" style="margin-right: 4px">
-            {{ tag }}
-          </el-tag>
-        </el-descriptions-item>
+        <el-descriptions-item label="Token数">{{ currentChunk.token_count || 0 }}</el-descriptions-item>
         <el-descriptions-item label="内容" :span="2">
           <el-text style="white-space: pre-wrap">{{ currentChunk.content }}</el-text>
         </el-descriptions-item>
@@ -359,7 +401,6 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Upload, Search } from '@element-plus/icons-vue'
@@ -418,11 +459,12 @@ const settingsForm = reactive<UpdateKnowledgeBaseRequest>({
   name: '',
   description: '',
   status: 1,
-  embedding_model: 'bge-m3',
   chunk_size: 512,
   chunk_overlap: 100,
-  enable_graph: true,
-  enable_tag: true
+  graph_enabled: true,
+  bm25_enabled: false,
+  image_processing_mode: 'none',
+  extract_mode: 'none'
 })
 
 function formatDateTime(date?: string) {
@@ -468,10 +510,26 @@ async function loadKnowledgeBase() {
     const res = await knowledgeApi.getDetail(kbId.value)
     if (res.data) {
       knowledgeBase.value = res.data
-      // 初始化设置表单
-      settingsForm.name = res.data.name
-      settingsForm.description = res.data.description || ''
-      settingsForm.status = res.data.status
+      // 初始化设置表单 - 从 setting 对象或主对象读取
+      const data = res.data
+      settingsForm.name = data.name
+      settingsForm.description = data.description || ''
+      settingsForm.status = data.status
+      // 从 setting 对象读取配置（如果存在）
+      if (data.setting) {
+        settingsForm.chunk_size = data.setting.chunk_size ?? 512
+        settingsForm.chunk_overlap = data.setting.chunk_overlap ?? 100
+        settingsForm.graph_enabled = data.setting.graph_enabled ?? false
+        settingsForm.bm25_enabled = data.setting.bm25_enabled ?? false
+        settingsForm.image_processing_mode = data.setting.image_processing_mode ?? 'none'
+        settingsForm.extract_mode = data.setting.extract_mode ?? 'none'
+      } else {
+        // 向后兼容：使用默认值
+        settingsForm.chunk_size = 512
+        settingsForm.chunk_overlap = 100
+        settingsForm.graph_enabled = false
+        settingsForm.bm25_enabled = false
+      }
     }
   } catch (error) {
     console.error('Failed to load knowledge base:', error)
@@ -499,16 +557,21 @@ async function loadKnowledges() {
   try {
     const res = await knowledgeApi.getKnowledgeList(kbId.value)
     if (res.data) {
-      knowledges.value = res.data
+      // 处理分页响应或直接数组
+      const items = (res.data as any).items || res.data || []
+      knowledges.value = Array.isArray(items) ? items : []
       // 为处理中的文档启动状态轮询
       knowledges.value.forEach((kb) => {
         if (kb.parse_status === 'processing' || kb.parse_status === 'pending') {
           startStatusPolling(kb.id)
         }
       })
+    } else {
+      knowledges.value = []
     }
   } catch (error) {
     console.error('Failed to load knowledges:', error)
+    knowledges.value = []
   } finally {
     knowledgesLoading.value = false
   }
@@ -527,7 +590,7 @@ function startStatusPolling(knowledgeId: string) {
       if (res.data) {
         const status = res.data
         // 如果处理完成或失败，停止轮询并刷新列表
-        if (status.status === 'completed' || status.status === 'failed') {
+        if (status.parse_status === 'completed' || status.parse_status === 'failed') {
           stopStatusPolling(knowledgeId)
           await loadKnowledges()
         }
@@ -657,10 +720,14 @@ async function loadChunks() {
       knowledge_id: selectedKnowledgeId.value
     })
     if (res.data) {
-      chunks.value = res.data.items || []
+      const items = (res.data as any).items || res.data || []
+      chunks.value = Array.isArray(items) ? items : []
+    } else {
+      chunks.value = []
     }
   } catch (error) {
     console.error('Failed to load chunks:', error)
+    chunks.value = []
   } finally {
     chunksLoading.value = false
   }
@@ -681,13 +748,54 @@ async function saveSettings() {
 
   settingsSaving.value = true
   try {
-    await knowledgeApi.update(kbId.value, settingsForm)
+    // 只保存 kb_settings 相关的字段（数据处理配置）
+    const updateData = {
+      name: settingsForm.name,
+      description: settingsForm.description,
+      status: settingsForm.status,
+      // 数据处理配置
+      chunk_size: settingsForm.chunk_size,
+      chunk_overlap: settingsForm.chunk_overlap,
+      graph_enabled: settingsForm.graph_enabled,
+      bm25_enabled: settingsForm.bm25_enabled,
+      image_processing_mode: settingsForm.image_processing_mode,
+      extract_mode: settingsForm.extract_mode
+    }
+    await knowledgeApi.update(kbId.value, updateData)
     ElMessage.success('设置保存成功')
     await loadKnowledgeBase()
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')
   } finally {
     settingsSaving.value = false
+  }
+}
+
+// 重置设置
+async function resetSettings() {
+  try {
+    await ElMessageBox.confirm('确定要重置为默认设置吗？', '重置确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    // 重置为默认值
+    const updateData = {
+      chunk_size: 512,
+      chunk_overlap: 100,
+      graph_enabled: false,
+      bm25_enabled: false,
+      image_processing_mode: 'none',
+      extract_mode: 'none'
+    }
+    await knowledgeApi.update(kbId.value, updateData)
+    ElMessage.success('重置成功')
+    await loadKnowledgeBase()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '重置失败')
+    }
   }
 }
 

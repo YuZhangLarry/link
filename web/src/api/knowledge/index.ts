@@ -62,7 +62,7 @@ export const knowledgeApi = {
    * 上传知识库文件
    */
   uploadFile(kbId: string, formData: FormData) {
-    return http.post<{ knowledge_id: string; status: string; file_size: number }>(
+    return http.post<{ knowledge_id: string; status: string; storage_size: number }>(
       `/knowledge-bases/${kbId}/knowledge/file`,
       formData,
       {

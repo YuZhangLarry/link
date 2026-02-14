@@ -153,7 +153,10 @@ func (h *SessionHandler) GetSessionDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "成功",
-		"data":    resp,
+		"data": gin.H{
+			"session":  resp.Session,
+			"messages": resp.Messages,
+		},
 	})
 }
 

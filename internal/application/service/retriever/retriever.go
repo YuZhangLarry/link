@@ -2,7 +2,9 @@ package retriever
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"strconv"
@@ -18,10 +20,13 @@ import (
 
 // Retriever 检索服务
 type Retriever struct {
-	kbSettingRepo   interfaces.KBSettingRepository
-	chunkRepo       interfaces.ChunkRepository
-	embedder        embedding.Embedder
-	milvusRetriever *milvus.VectorRetriever // Milvus 向量检索器（可选）
+	kbSettingRepo        interfaces.KBSettingRepository
+	retrievalSettingRepo interfaces.RetrievalSettingRepository // 新增：检索设置仓储
+	chunkRepo            interfaces.ChunkRepository
+	embedder             embedding.Embedder
+	milvusRetriever      *milvus.VectorRetriever // Milvus 向量检索器（可选）
+	neo4jRepo            interfaces.Neo4jGraphRepository
+	graphQueryRepo       interfaces.GraphQueryRepository
 }
 
 // RetrieveOptions 检索选项
@@ -35,9 +40,18 @@ type RetrieveOptions struct {
 
 // RetrieveResponse 检索响应
 type RetrieveResponse struct {
-	Results []*RetrieveResult
-	Query   string
-	Mode    string
+	Results   []*RetrieveResult
+	Query     string
+	Mode      string
+	Relations []*GraphRelationRes // 图谱关系（简化版）
+}
+
+// GraphRelationRes 简化的图谱关系
+type GraphRelationRes struct {
+	Source      string // 源实体
+	Target      string // 目标实体
+	Type        string // 关系类型
+	Description string // 关系描述
 }
 
 // RetrieveResult 检索结果
@@ -59,12 +73,16 @@ func NewRetriever(
 	chunkRepo interfaces.ChunkRepository,
 	embedder embedding.Embedder,
 	milvusRetriever *milvus.VectorRetriever, // 可选，如果提供则使用 Milvus 向量检索
+	neo4jRepo interfaces.Neo4jGraphRepository, // 可选，用于图谱检索
+	graphQueryRepo interfaces.GraphQueryRepository, // 可选，用于图谱检索
 ) *Retriever {
 	return &Retriever{
 		kbSettingRepo:   kbSettingRepo,
 		chunkRepo:       chunkRepo,
 		embedder:        embedder,
 		milvusRetriever: milvusRetriever,
+		neo4jRepo:       neo4jRepo,
+		graphQueryRepo:  graphQueryRepo,
 	}
 }
 
@@ -77,13 +95,38 @@ func (r *Retriever) Retrieve(ctx context.Context, tenantID int64, kbID string, q
 		return nil, fmt.Errorf("获取知识库设置失败: %w", err)
 	}
 
+	// 从 settings_json 解析配置
+	retrievalMode := "vector"  // 默认检索模式
+	topK := 5                  // 默认 topK
+	similarityThreshold := 0.7 // 默认阈值
+	rerankEnabled := false
+	graphEnabled := setting.GraphEnabled
+
+	if setting.SettingsJSON != nil {
+		var settingsMap map[string]interface{}
+		if err := json.Unmarshal([]byte(*setting.SettingsJSON), &settingsMap); err == nil {
+			if mode, ok := settingsMap["retrieval_mode"].(string); ok {
+				retrievalMode = mode
+			}
+			if tk, ok := settingsMap["top_k"].(float64); ok {
+				topK = int(tk)
+			}
+			if st, ok := settingsMap["similarity_threshold"].(float64); ok {
+				similarityThreshold = st
+			}
+			if re, ok := settingsMap["rerank_enabled"].(bool); ok {
+				rerankEnabled = re
+			}
+		}
+	}
+
 	// 2. 如果没有提供选项，使用知识库设置中的默认值
 	if opts == nil {
 		opts = &RetrieveOptions{
-			TopK:                setting.TopK,
-			SimilarityThreshold: setting.SimilarityThreshold,
-			RerankEnabled:       setting.RerankEnabled,
-			GraphEnabled:        setting.GraphEnabled,
+			TopK:                topK,
+			SimilarityThreshold: similarityThreshold,
+			RerankEnabled:       rerankEnabled,
+			GraphEnabled:        graphEnabled,
 			Alpha:               0.5,
 		}
 	}
@@ -94,7 +137,7 @@ func (r *Retriever) Retrieve(ctx context.Context, tenantID int64, kbID string, q
 	}
 
 	// 4. 根据检索模式选择检索方法
-	switch setting.RetrievalMode {
+	switch retrievalMode {
 	case "vector", "vector_search":
 		return r.vectorRetrieveWithEmbedding(ctx, tenantID, kbID, query, opts)
 	case "bm25", "keyword", "keywords":
@@ -339,14 +382,233 @@ func (r *Retriever) hybridRetrieve(ctx context.Context, tenantID int64, kbID str
 	}, nil
 }
 
-// graphRetrieve 知识图谱检索（暂未实现）
+// GraphRetrieve 公开的知识图谱检索方法
+// 实现流程：从查询中提取实体 -> 获取关联实体 -> 根据 strength 排序拿到 top5 -> 去数据库获取具体内容
+func (r *Retriever) GraphRetrieve(ctx context.Context, tenantID int64, kbID string, query string, opts *RetrieveOptions) (*RetrieveResponse, error) {
+	return r.graphRetrieve(ctx, tenantID, kbID, query, opts)
+}
+
+// graphRetrieve 知识图谱检索
+// 实现流程：从查询中提取实体 -> 获取关联实体 -> 根据 strength 排序拿到 top5 -> 去数据库获取具体内容
 func (r *Retriever) graphRetrieve(ctx context.Context, tenantID int64, kbID string, query string, opts *RetrieveOptions) (*RetrieveResponse, error) {
-	// TODO: 实现 Neo4j 知识图谱检索
+	log.Printf("[GraphRetriever] START: kbID=%s, query=%s", kbID, query)
+
+	// 检查必要的仓储是否可用
+	if r.neo4jRepo == nil || r.graphQueryRepo == nil {
+		log.Printf("[GraphRetriever] ERROR: neo4jRepo or graphQueryRepo is nil")
+		return &RetrieveResponse{
+			Results: []*RetrieveResult{},
+			Query:   query,
+			Mode:    "graph",
+		}, fmt.Errorf("知识图谱检索仓储未配置")
+	}
+
+	// 1. 从查询中提取实体
+	entities := r.extractEntities(query)
+	if len(entities) == 0 {
+		log.Printf("[GraphRetriever] WARNING: no entities extracted from query")
+		return &RetrieveResponse{
+			Results: []*RetrieveResult{},
+			Query:   query,
+			Mode:    "graph",
+		}, nil
+	}
+	log.Printf("[GraphRetriever] Extracted entities: %v", entities)
+
+	// 2. 从 Neo4j 获取关联实体
+	namespace := types.NameSpace{
+		KBID: kbID,
+		// Knowledge 留空表示查询整个知识库的图谱
+	}
+
+	graphData, err := r.neo4jRepo.SearchNodeV2(ctx, namespace, entities)
+	if err != nil {
+		log.Printf("[GraphRetriever] ERROR: SearchNodeV2 failed: %v", err)
+		return nil, fmt.Errorf("图谱节点查询失败: %w", err)
+	}
+
+	if graphData == nil || len(graphData.Relation) == 0 {
+		log.Printf("[GraphRetriever] WARNING: no relations found for entities")
+		return &RetrieveResponse{
+			Results: []*RetrieveResult{},
+			Query:   query,
+			Mode:    "graph",
+		}, nil
+	}
+	log.Printf("[GraphRetriever] Found %d relations", len(graphData.Relation))
+
+	// 3. 根据关系 strength 排序，收集 chunk_ids
+	type ChunkWithStrength struct {
+		ChunkID  string
+		Strength float64
+		Relation *types.GraphRelation
+	}
+
+	var chunksWithStrength []ChunkWithStrength
+	seenChunkIDs := make(map[string]bool)
+
+	for _, rel := range graphData.Relation {
+		// 从关系的 chunk_ids 中提取所有关联的 chunk
+		for _, chunkID := range rel.ChunkIDs {
+			if chunkID == "" {
+				continue
+			}
+			// 去重：如果同一个 chunk 出现在多个关系中，取最高的 strength
+			if seenChunkIDs[chunkID] {
+				// 更新已存在的 chunk 的 strength（如果当前更高）
+				for i, cws := range chunksWithStrength {
+					if cws.ChunkID == chunkID && rel.Strength > cws.Strength {
+						chunksWithStrength[i].Strength = rel.Strength
+						chunksWithStrength[i].Relation = rel
+					}
+				}
+				continue
+			}
+			seenChunkIDs[chunkID] = true
+			chunksWithStrength = append(chunksWithStrength, ChunkWithStrength{
+				ChunkID:  chunkID,
+				Strength: rel.Strength,
+				Relation: rel,
+			})
+		}
+	}
+
+	// 按 strength 降序排序
+	sort.Slice(chunksWithStrength, func(i, j int) bool {
+		return chunksWithStrength[i].Strength > chunksWithStrength[j].Strength
+	})
+
+	// 取 topK 个 chunk ID（如果 TopK 小于等于 0，默认取 5）
+	topK := opts.TopK
+	if topK <= 0 {
+		topK = 5
+	}
+	if len(chunksWithStrength) > topK {
+		chunksWithStrength = chunksWithStrength[:topK]
+	}
+
+	// 提取 chunk ID 列表
+	chunkIDs := make([]string, len(chunksWithStrength))
+	for i, cws := range chunksWithStrength {
+		chunkIDs[i] = cws.ChunkID
+	}
+	log.Printf("[GraphRetriever] Selected top %d chunks by strength: %v", len(chunkIDs), chunkIDs)
+
+	// 4. 根据 chunk ID 列表从数据库获取具体内容
+	chunks, err := r.graphQueryRepo.GetChunksByIDs(ctx, kbID, chunkIDs)
+	if err != nil {
+		log.Printf("[GraphRetriever] ERROR: GetChunksByIDs failed: %v", err)
+		return nil, fmt.Errorf("获取分块内容失败: %w", err)
+	}
+
+	if len(chunks) == 0 {
+		log.Printf("[GraphRetriever] WARNING: no chunks found in database")
+		return &RetrieveResponse{
+			Results: []*RetrieveResult{},
+			Query:   query,
+			Mode:    "graph",
+		}, nil
+	}
+
+	// 5. 构建检索结果
+	// 创建 chunkID -> strength 的映射
+	chunkStrengthMap := make(map[string]float64)
+	for _, cws := range chunksWithStrength {
+		chunkStrengthMap[cws.ChunkID] = cws.Strength
+	}
+
+	var results []*RetrieveResult
+	for _, chunk := range chunks {
+		strength := chunkStrengthMap[chunk.ID]
+		results = append(results, &RetrieveResult{
+			ChunkID:       chunk.ID,
+			KnowledgeID:   chunk.KnowledgeID,
+			KBID:          chunk.KBID,
+			Content:       chunk.Content,
+			ChunkIndex:    chunk.ChunkIndex,
+			Score:         float32(strength), // 使用 strength 作为分数
+			MatchType:     "graph",
+			StartPosition: chunk.StartAt,
+			EndPosition:   chunk.EndAt,
+		})
+	}
+
+	// 按分数降序排序
+	results = r.sortAndTrimResults(results, opts.TopK)
+
+	// 构建简化关系列表 - 从节点中获取名称
+	var relationRes []*GraphRelationRes
+	nodeNameMap := make(map[string]string) // ID -> Name
+	for _, node := range graphData.Node {
+		nodeNameMap[node.ID] = node.Name
+	}
+
+	for _, rel := range graphData.Relation {
+		relationRes = append(relationRes, &GraphRelationRes{
+			Source:      rel.Source,
+			Target:      rel.Target,
+			Type:        rel.Type,
+			Description: rel.Description,
+		})
+	}
+
+	log.Printf("[GraphRetriever] COMPLETE: returned %d results, %d relations", len(results), len(relationRes))
 	return &RetrieveResponse{
-		Results: []*RetrieveResult{},
-		Query:   query,
-		Mode:    "graph",
-	}, fmt.Errorf("知识图谱检索暂未实现")
+		Results:   results,
+		Query:     query,
+		Mode:      "graph",
+		Relations: relationRes,
+	}, nil
+}
+
+// extractEntities 从查询文本中提取实体
+// 使用简单的分词方法，提取中文词汇和英文单词
+func (r *Retriever) extractEntities(query string) []string {
+	// 使用现有的 tokenize 方法进行分词
+	words := tokenize(query)
+
+	// 过滤掉停用词和单字符
+	stopWords := map[string]bool{
+		"的": true, "了": true, "在": true, "是": true, "我": true,
+		"有": true, "和": true, "就": true, "不": true, "人": true,
+		"都": true, "一": true, "一个": true, "上": true, "也": true,
+		"很": true, "到": true, "说": true, "要": true, "去": true,
+		"你": true, "会": true, "着": true, "没有": true, "看": true,
+		"好": true, "自己": true, "这": true, "the": true, "a": true,
+		"an": true, "and": true, "or": true, "but": true, "is": true,
+		"are": true, "was": true, "were": true, "of": true, "to": true,
+		"in": true, "on": true, "at": true, "for": true, "with": true,
+	}
+
+	var entities []string
+	seen := make(map[string]bool)
+
+	for _, word := range words {
+		// 过滤条件：非停用词、长度大于 1、不是纯数字
+		if !stopWords[word] && len(word) > 1 && !isNumeric(word) {
+			if !seen[word] {
+				seen[word] = true
+				entities = append(entities, word)
+			}
+		}
+	}
+
+	// 限制实体数量，避免查询过大
+	if len(entities) > 10 {
+		entities = entities[:10]
+	}
+
+	return entities
+}
+
+// isNumeric 检查字符串是否为纯数字
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if !unicode.IsDigit(c) {
+			return false
+		}
+	}
+	return true
 }
 
 // ========================================

@@ -22,6 +22,7 @@ import (
 type GraphService struct {
 	graphRepo      interfaces.Neo4jGraphRepository // Neo4j 图谱操作仓储
 	graphQueryRepo interfaces.GraphQueryRepository // 图谱与知识库关联查询仓储
+	chunkRepo      interfaces.ChunkRepository      // Chunk 仓储
 	graphCache     *graphCache
 	mutex          sync.RWMutex
 }
@@ -49,12 +50,26 @@ func NewGraphServiceWithQuery(graphRepo interfaces.Neo4jGraphRepository, graphQu
 	}
 }
 
+// NewGraphServiceWithChunks 创建图谱服务实例（包含chunk仓储）
+func NewGraphServiceWithChunks(graphRepo interfaces.Neo4jGraphRepository, graphQueryRepo interfaces.GraphQueryRepository, chunkRepo interfaces.ChunkRepository) *GraphService {
+	return &GraphService{
+		graphRepo:      graphRepo,
+		graphQueryRepo: graphQueryRepo,
+		chunkRepo:      chunkRepo,
+		graphCache: &graphCache{
+			nodes:     make(map[string]*types.GraphNode),
+			relations: make(map[string]*types.GraphRelation),
+		},
+	}
+}
+
 // ========================================
 // 图谱提取相关类型
 // ========================================
 
 // ChunkExtractionInput 文档块提取输入
 type ChunkExtractionInput struct {
+	KBID     string // 知识库ID
 	ChunkID  string // 文档块ID
 	Document string // 文档内容
 	Query    string // 提取查询
@@ -119,7 +134,7 @@ func (s *GraphService) ExtractGraphFromChunks(
 			}
 
 			// 提取关系（基于已提取的实体）
-			relations, err := s.extractRelations(ctx, inp.ChunkID, inp.Document, inp.Query, nodes)
+			relations, err := s.extractRelations(ctx, inp.KBID, inp.ChunkID, inp.Document, inp.Query, nodes)
 			if err != nil {
 				errors[idx] = fmt.Errorf("failed to extract relations from chunk %s: %w", inp.ChunkID, err)
 				log.Printf("[GraphService] Error extracting relations from chunk %s: %v", inp.ChunkID, err)
@@ -239,7 +254,7 @@ func (s *GraphService) extractEntities(
 // extractRelations 从文档和实体中提取关系
 func (s *GraphService) extractRelations(
 	ctx context.Context,
-	chunkID, document, query string,
+	kbID, chunkID, document, query string,
 	entities []*types.GraphNode,
 ) ([]*types.GraphRelation, error) {
 	// 加载关系提取提示词模板
@@ -322,9 +337,12 @@ func (s *GraphService) extractRelations(
 			rel.ID = uuid.New().String()
 		}
 
-		// 添加 chunk_id
-		if !slices.Contains(rel.ChunkIDs, chunkID) {
-			rel.ChunkIDs = append(rel.ChunkIDs, chunkID)
+		// 根据source和target实体名称从数据库中查找包含这些实体的chunk
+		matchedChunks := s.findChunksByEntities(ctx, kbID, rel.Source, rel.Target)
+		for _, dbChunkID := range matchedChunks {
+			if !slices.Contains(rel.ChunkIDs, dbChunkID) {
+				rel.ChunkIDs = append(rel.ChunkIDs, dbChunkID)
+			}
 		}
 
 		validRelations = append(validRelations, rel)
@@ -881,4 +899,43 @@ func (s *GraphService) GetGraphStats(ctx context.Context, kbID string) (*interfa
 		return nil, fmt.Errorf("GraphQueryRepository 未初始化")
 	}
 	return s.graphQueryRepo.GetGraphStats(ctx, kbID)
+}
+
+// findChunksByEntities 根据实体名称查找包含这些实体的 chunk
+// 遍历所有启用 chunk 的内容，检查是否包含任一实体名称
+func (s *GraphService) findChunksByEntities(
+	ctx context.Context,
+	kbID string,
+	entity1, entity2 string,
+) []string {
+	// 获取该知识库的所有启用 chunk（限制数量以避免查询过大）
+	chunks, err := s.chunkRepo.FindEnabledChunks(ctx, kbID, 1000)
+	if err != nil {
+		return []string{}
+	}
+
+	var matchedChunkIDs []string
+
+	// 检查每个 chunk 内容是否包含实体名称
+	for _, chunk := range chunks {
+		content := chunk.Content
+		// 检查是否包含 entity1
+		if len(content) >= len(entity1) && containsEntity(content, entity1) {
+			matchedChunkIDs = append(matchedChunkIDs, chunk.ID)
+			break // 只需要匹配一个实体即可
+		}
+		// 如果没有匹配 entity1，检查 entity2
+		if len(matchedChunkIDs) == 0 && len(content) >= len(entity2) && containsEntity(content, entity2) {
+			matchedChunkIDs = append(matchedChunkIDs, chunk.ID)
+			break
+		}
+	}
+
+	return matchedChunkIDs
+}
+
+// containsEntity 检查 chunk 内容是否包含实体名称
+func containsEntity(content, entityName string) bool {
+	// 简单匹配：检查实体名称是否完整出现在内容中
+	return strings.Contains(content, entityName)
 }

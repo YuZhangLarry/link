@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	common_repository "link/internal/common"
+	"log"
 
 	"gorm.io/gorm"
 
@@ -298,7 +299,9 @@ func (r *sessionRepository) IncrementMessageCount(ctx context.Context, sessionID
 // getTenantIDFromContext 从上下文获取租户ID
 func getTenantIDFromContext(ctx context.Context) int64 {
 	if tenantID, ok := ctx.Value("tenant_id").(int64); ok {
+		log.Printf("📋 [getTenantIDFromContext] 获取 tenant_id = %d", tenantID)
 		return tenantID
 	}
+	log.Printf("⚠️  [getTenantIDFromContext] context 中没有 tenant_id，返回 0")
 	return 0
 }

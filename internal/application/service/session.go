@@ -11,12 +11,14 @@ import (
 // SessionService 会话服务实现 - 多租户版本
 type SessionService struct {
 	sessionRepo interfaces.SessionRepository
+	messageRepo interfaces.MessageRepository
 }
 
 // NewSessionService 创建会话服务实例
-func NewSessionService(sessionRepo interfaces.SessionRepository) interfaces.SessionService {
+func NewSessionService(sessionRepo interfaces.SessionRepository, messageRepo interfaces.MessageRepository) interfaces.SessionService {
 	return &SessionService{
 		sessionRepo: sessionRepo,
+		messageRepo: messageRepo,
 	}
 }
 
@@ -64,10 +66,33 @@ func (s *SessionService) GetSessionDetail(ctx context.Context, id string) (*type
 		return nil, err
 	}
 
+	// 查询消息列表（获取所有消息，不分页）
+	messageEntities, _, err := s.messageRepo.FindBySessionID(ctx, id, 1, 10000)
+	if err != nil {
+		return nil, fmt.Errorf("查询消息列表失败: %w", err)
+	}
+
+	// 转换为 MessageResponse
+	messages := make([]*types.MessageResponse, len(messageEntities))
+	for i, msg := range messageEntities {
+		messages[i] = &types.MessageResponse{
+			ID:                  msg.ID,
+			RequestID:           msg.RequestID,
+			SessionID:           msg.SessionID,
+			Role:                msg.Role,
+			Content:             msg.Content,
+			KnowledgeReferences: msg.KnowledgeReferences,
+			AgentSteps:          msg.AgentSteps,
+			ToolCalls:           msg.ToolCalls,
+			IsCompleted:         msg.IsCompleted,
+			TokenCount:          msg.TokenCount,
+			CreatedAt:           msg.CreatedAt,
+		}
+	}
+
 	return &types.SessionDetailResponse{
-		SessionResponse: *s.toSessionResponse(session),
-		// 消息列表需要通过 MessageService 获取
-		Messages: []*types.MessageResponse{},
+		Session:  s.toSessionResponse(session),
+		Messages: messages,
 	}, nil
 }
 
@@ -179,17 +204,17 @@ func (s *SessionService) ActivateSession(ctx context.Context, id string) error {
 // toSessionResponse 转换为会话响应格式
 func (s *SessionService) toSessionResponse(session *types.SessionEntity) *types.SessionResponse {
 	return &types.SessionResponse{
-		ID:              session.ID,
-		TenantID:        session.TenantID,
-		UserID:          session.UserID,
-		Title:           session.Title,
-		Description:     session.Description,
-		KBID:            session.KBID,
-		MaxRounds:       session.MaxRounds,
-		EnableRewrite:   session.EnableRewrite,
-		MessageCount:    session.MessageCount,
-		Status:          session.Status,
-		CreatedAt:       session.CreatedAt,
-		UpdatedAt:       session.UpdatedAt,
+		ID:            session.ID,
+		TenantID:      session.TenantID,
+		UserID:        session.UserID,
+		Title:         session.Title,
+		Description:   session.Description,
+		KBID:          session.KBID,
+		MaxRounds:     session.MaxRounds,
+		EnableRewrite: session.EnableRewrite,
+		MessageCount:  session.MessageCount,
+		Status:        session.Status,
+		CreatedAt:     session.CreatedAt,
+		UpdatedAt:     session.UpdatedAt,
 	}
 }

@@ -171,7 +171,17 @@
           </el-select>
         </el-form-item>
         <el-form-item label="强度">
-          <el-slider v-model="addRelationForm.strength" :min="1" :max="10" />
+          <el-slider
+            v-model="addRelationForm.strength"
+            :min="1"
+            :max="10"
+            :step="1"
+            show-stops
+            :marks="{ 1: '1', 5: '5', 10: '10' }"
+          />
+          <div style="text-align: center; margin-top: 8px; color: #409eff;">
+            当前值: {{ addRelationForm.strength }}
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -228,7 +238,17 @@
           </el-select>
         </el-form-item>
         <el-form-item label="强度">
-          <el-slider v-model="editRelationForm.strength" :min="1" :max="10" />
+          <el-slider
+            v-model="editRelationForm.strength"
+            :min="1"
+            :max="10"
+            :step="1"
+            show-stops
+            :marks="{ 1: '1', 5: '5', 10: '10' }"
+          />
+          <div style="text-align: center; margin-top: 8px; color: #409eff;">
+            当前值: {{ editRelationForm.strength }}
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -506,10 +526,6 @@ async function loadGraph() {
     const res = await graphApi.getGraph(kbId.value)
     console.log('[loadGraph] API 响应:', res)
     console.log('[loadGraph] 响应 data:', res.data)
-    console.log('[loadGraph] data.Node:', res.data?.Node)
-    console.log('[loadGraph] data.nodes:', res.data?.nodes)
-    console.log('[loadGraph] data.Relation:', res.data?.Relation)
-    console.log('[loadGraph] data.relations:', res.data?.relations)
 
     if (res.data) {
       // 转换后端数据到 vis-network 格式
@@ -711,6 +727,7 @@ async function handleAddNode() {
     }
 
     const res = await graphApi.addNode(kbId.value, data)
+    // 响应格式: { message: "success", data: { message: "success", data: {...} } }
     if (res.data) {
       ElMessage.success('节点添加成功')
       addNodeDialogVisible.value = false
@@ -881,12 +898,13 @@ function handleExport() {
 async function loadRelationTypes() {
   try {
     const res = await graphApi.getRelationTypes(kbId.value)
+    // 响应拦截器直接返回后端响应 { message: "success", data: [...] }
     if (res.data) {
       relationTypeOptions.value = res.data
     }
   } catch (error: any) {
     console.error('[loadRelationTypes] 加载失败:', error)
-    // 使用默认选项
+    // 使用默认选项（与后端 RelationTypeOptions 保持一致）
     relationTypeOptions.value = [
       { value: 'contains', label: '包含' },
       { value: 'relates', label: '关联' },

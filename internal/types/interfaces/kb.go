@@ -201,8 +201,56 @@ type KBSettingRepository interface {
 	// UpdateRetrievalConfig 更新检索配置
 	UpdateRetrievalConfig(ctx context.Context, kbID string, mode string, threshold float64, topK int) error
 
+	// UpdateModelConfig 更新模型配置
+	UpdateModelConfig(ctx context.Context, kbID string, embeddingModelID, summaryModelID, rerankModelID string) error
+
+	// UpdateProcessingConfig 更新处理配置
+	UpdateProcessingConfig(ctx context.Context, kbID string, chunkingConfig, imageProcessingConfig, cosConfig, vlmConfig, extractConfig string) error
+
 	// Delete 删除设置
 	Delete(ctx context.Context, kbID string) error
+
+	// Exists 检查设置是否存在
+	Exists(ctx context.Context, kbID string) (bool, error)
+}
+
+// RetrievalSettingRepository 检索设置仓储接口
+type RetrievalSettingRepository interface {
+	// Create 创建检索设置
+	Create(ctx context.Context, setting *types.RetrievalSetting) error
+
+	// FindByKBID 根据知识库ID查找检索设置
+	FindByKBID(ctx context.Context, kbID string) (*types.RetrievalSetting, error)
+
+	// FindByID 根据ID查找检索设置
+	FindByID(ctx context.Context, id int64) (*types.RetrievalSetting, error)
+
+	// Update 更新检索设置
+	Update(ctx context.Context, setting *types.RetrievalSetting) error
+
+	// Delete 删除检索设置
+	Delete(ctx context.Context, kbID string) error
+
+	// UpdateVectorConfig 更新向量检索配置
+	UpdateVectorConfig(ctx context.Context, kbID string, topK int, threshold float64, modelID string) error
+
+	// UpdateBM25Config 更新BM25检索配置
+	UpdateBM25Config(ctx context.Context, kbID string, topK int) error
+
+	// UpdateGraphConfig 更新图谱检索配置
+	UpdateGraphConfig(ctx context.Context, kbID string, enabled bool, topK int, minStrength float64) error
+
+	// UpdateHybridConfig 更新混合检索配置
+	UpdateHybridConfig(ctx context.Context, kbID string, alpha float64, rerankEnabled bool) error
+
+	// UpdateWebConfig 更新网络搜索配置
+	UpdateWebConfig(ctx context.Context, kbID string, enabled bool, topK int, engine, apiKey string, searchDepth int) error
+
+	// UpdateRerankConfig 更新重排序配置
+	UpdateRerankConfig(ctx context.Context, kbID string, enabled bool, modelID string) error
+
+	// UpdateDefaultMode 更新默认检索模式
+	UpdateDefaultMode(ctx context.Context, kbID string, mode string, availableModes []string) error
 
 	// Exists 检查设置是否存在
 	Exists(ctx context.Context, kbID string) (bool, error)
@@ -244,6 +292,9 @@ type Neo4jGraphRepository interface {
 	// SearchNode 搜索节点
 	SearchNode(ctx context.Context, namespace types.NameSpace, nodes []string) (*types.GraphData, error)
 
+	// SearchNodeV2 搜索节点（改进版 - 直接返回节点名称）
+	SearchNodeV2(ctx context.Context, namespace types.NameSpace, nodes []string) (*types.GraphData, error)
+
 	// SearchPath 搜索路径
 	SearchPath(ctx context.Context, namespace types.NameSpace, startNode, endNode string, maxDepth int) ([]*types.GraphData, error)
 
@@ -264,6 +315,9 @@ type Neo4jGraphRepository interface {
 type GraphQueryRepository interface {
 	// GetChunksByGraphNodes 根据图谱节点名称获取关联的分片
 	GetChunksByGraphNodes(ctx context.Context, kbID string, nodeNames []string) ([]*types.Chunk, error)
+
+	// GetChunksByIDs 根据 chunk ID 列表获取分片内容（用于图谱检索）
+	GetChunksByIDs(ctx context.Context, kbID string, chunkIDs []string) ([]*types.Chunk, error)
 
 	// GetKnowledgeByGraphNodes 根据图谱节点名称获取关联的知识条目
 	GetKnowledgeByGraphNodes(ctx context.Context, kbID string, nodeNames []string) (*types.Knowledge, error)

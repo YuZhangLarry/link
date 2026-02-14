@@ -176,9 +176,12 @@ async function loadSessions() {
   loadingSessions.value = true
   try {
     const res = await sessionApi.list({ page: 1, size: 50 })
+    console.log('loadSessions res:', res)
+    console.log('loadSessions res.data:', res.data)
     if (res.data) {
-      // 确保 items 存在且是数组
+      // 后端返回的是 items
       sessions.value = res.data.items || []
+      console.log('loadSessions sessions:', sessions.value)
       if (sessions.value.length > 0 && !currentSessionId.value) {
         currentSessionId.value = sessions.value[0].id
         await loadMessages(sessions.value[0].id)
@@ -199,8 +202,11 @@ async function loadSessions() {
 async function loadMessages(sessionId: string) {
   try {
     const res = await sessionApi.getDetail(sessionId)
+    console.log('loadMessages res:', res)
+    console.log('loadMessages res.data:', res.data)
     if (res.data) {
-      messages.value = res.data.messages
+      messages.value = res.data.messages || []
+      console.log('loadMessages messages:', messages.value)
       scrollToBottom()
     }
   } catch (error) {

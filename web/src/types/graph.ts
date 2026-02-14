@@ -99,6 +99,7 @@ export interface AddNodeRequest {
 // 更新节点请求
 export interface UpdateNodeRequest {
   name: string
+  title?: string          // 新增：节点标题/描述
   entity_type?: string
   attributes?: string[]
 }
@@ -125,7 +126,7 @@ export interface NodeDetailResponse {
 }
 
 // 布局类型
-export type LayoutType = 'force' | 'circular' | 'radial' | 'concentric' | 'grid'
+export type LayoutType = 'force' | 'hierarchical' | 'circular' | 'radial' | 'concentric'
 
 // 图谱配置
 export interface GraphConfig {
@@ -136,7 +137,7 @@ export interface GraphConfig {
   edgeLabel: boolean
 }
 
-// 关系类型选项
+// 关系类型选项（后端返回小写字段名）
 export interface RelationTypeOption {
   value: string
   label: string

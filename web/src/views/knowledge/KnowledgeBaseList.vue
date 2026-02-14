@@ -14,111 +14,158 @@
       style="width: 100%"
     >
       <el-table-column prop="name" label="知识库名称" min-width="200" />
-      <el-table-column prop="description" label="描述" min-width="300" show-overflow-tooltip />
-      <el-table-column prop="type" label="类型" width="120">
-        <template #default="{ row }">
-          <el-tag>{{ row.type || '通用' }}</el-tag>
-        </template>
-      </el-table-column>
+      <el-table-column prop="description" label="描述" show-overflow-tooltip />
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="getStatusType(row.status)">
-            {{ getStatusText(row.status) }}
-          </el-tag>
+          <el-tag v-if="row.status === 1" type="success">启用</el-tag>
+          <el-tag v-else type="info">禁用</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" @click="goToDetail(row.id)">
-            查看
-          </el-button>
-          <el-button link type="primary" @click="editKnowledgeBase(row)">
-            编辑
-          </el-button>
-          <el-button link type="danger" @click="deleteKnowledgeBase(row.id)">
-            删除
-          </el-button>
+          <el-button link type="primary" @click="goToDetail(row.id)">查看</el-button>
+          <el-button link type="primary" @click="editKnowledgeBase(row)">编辑</el-button>
+          <el-button link type="danger" @click="deleteKnowledgeBase(row.id)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <el-empty v-if="!loading && knowledgeBases.length === 0" description="暂无知识库">
-      <el-button type="primary" @click="showCreateDialog = true">
-        创建第一个知识库
-      </el-button>
+      <el-button type="primary" @click="showCreateDialog = true">创建第一个知识库</el-button>
     </el-empty>
 
     <!-- 创建/编辑对话框 -->
     <el-dialog
       v-model="showCreateDialog"
       :title="editingId ? '编辑知识库' : '新建知识库'"
-      width="600px"
+      width="700px"
       :close-on-click-modal="false"
+      @open="handleDialogOpen"
     >
-      <el-form :model="formData" :rules="formRules" ref="formRef" label-width="100px">
-        <el-form-item label="知识库名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入知识库名称" />
-        </el-form-item>
-        <el-form-item label="描述" prop="description">
-          <el-input
-            v-model="formData.description"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入知识库描述"
-          />
-        </el-form-item>
-        <el-form-item label="类型" prop="type">
-          <el-select v-model="formData.type" placeholder="请选择类型" style="width: 100%">
-            <el-option label="通用" value="general" />
-            <el-option label="技术文档" value="technical" />
-            <el-option label="产品手册" value="product" />
-            <el-option label="FAQ" value="faq" />
-            <el-option label="其他" value="other" />
-          </el-select>
-        </el-form-item>
+      <el-tabs v-model="activeTab" class="dialog-tabs">
+        <!-- 基本信息 -->
+        <el-tab-pane label="基本信息" name="basic">
+          <el-form :model="formData" :rules="formRules" ref="formRef" label-width="120px">
+            <el-form-item label="知识库名称" prop="name">
+              <el-input v-model="formData.name" placeholder="请输入知识库名称" clearable />
+            </el-form-item>
 
-        <el-divider content-position="left">策略配置</el-divider>
+            <el-form-item label="描述" prop="description">
+              <el-input
+                v-model="formData.description"
+                type="textarea"
+                :rows="2"
+                placeholder="请输入知识库描述"
+                clearable />
+            </el-form-item>
 
-        <el-form-item label="向量模型">
-          <el-select v-model="formData.embedding_model" placeholder="请选择向量模型" style="width: 100%">
-            <el-option label="BGE-M3" value="bge-m3" />
-            <el-option label="BGE-Large" value="bge-large" />
-            <el-option label="Text2Vec" value="text2vec" />
-          </el-select>
-        </el-form-item>
+            <el-form-item label="图标URL" prop="avatar">
+              <el-input v-model="formData.avatar" placeholder="请输入图标URL" clearable />
+            </el-form-item>
 
-        <el-form-item label="分块大小">
-          <el-input-number
-            v-model="formData.chunk_size"
-            :min="128"
-            :max="2048"
-            :step="64"
-            style="width: 100%"
-          />
-          <span class="form-tip">建议值：512-1024，越小分块越精细，越大语义越完整</span>
-        </el-form-item>
+            <el-form-item label="可见性" prop="is_public">
+              <el-switch v-model="formData.is_public" active-text="公开" inactive-text="私有" />
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
 
-        <el-form-item label="分块重叠">
-          <el-input-number
-            v-model="formData.chunk_overlap"
-            :min="0"
-            :max="512"
-            :step="32"
-            style="width: 100%"
-          />
-          <span class="form-tip">建议值：50-200，重叠可以保持上下文连贯性</span>
-        </el-form-item>
+        <!-- 数据处理配置 -->
+        <el-tab-pane label="数据处理配置" name="processing">
+          <el-form :model="formData" label-width="140px">
+            <el-divider content-position="left">分块配置</el-divider>
 
-        <el-form-item label="启用图谱">
-          <el-switch v-model="formData.enable_graph" />
-          <span class="form-tip">启用后自动构建知识图谱，提取实体和关系</span>
-        </el-form-item>
+            <el-form-item label="分块大小">
+              <el-input-number
+                v-model="formData.chunk_size"
+                :min="128"
+                :max="2048"
+                :step="64"
+              />
+              <div class="form-tip">建议值：512-1024，值越小分块越精细</div>
+            </el-form-item>
 
-        <el-form-item label="启用标签">
-          <el-switch v-model="formData.enable_tag" />
-          <span class="form-tip">启用后自动为文档分块打标签</span>
-        </el-form-item>
-      </el-form>
+            <el-form-item label="分块重叠">
+              <el-input-number
+                v-model="formData.chunk_overlap"
+                :min="0"
+                :max="512"
+                :step="32"
+              />
+              <div class="form-tip">建议值：50-200，重叠可以保持上下文连贯性</div>
+            </el-form-item>
+
+            <el-divider content-position="left">索引构建</el-divider>
+
+            <el-form-item label="构建知识图谱">
+              <el-switch v-model="formData.graph_enabled" />
+              <div class="form-tip">为文档构建知识图谱，支持图谱检索</div>
+            </el-form-item>
+
+            <el-form-item label="构建BM25索引">
+              <el-switch v-model="formData.bm25_enabled" />
+              <div class="form-tip">构建BM25关键词索引，支持关键词检索</div>
+            </el-form-item>
+
+            <el-divider content-position="left">图片处理</el-divider>
+
+            <el-form-item label="图片处理方式">
+              <el-radio-group v-model="formData.image_processing_mode">
+                <el-radio label="none">不处理</el-radio>
+                <el-radio label="ocr">OCR文字提取</el-radio>
+                <el-radio label="vlm">视觉理解</el-radio>
+              </el-radio-group>
+              <div class="form-tip">
+                OCR：提取图片中的文字 | VLM：使用视觉模型理解图片内容
+              </div>
+            </el-form-item>
+
+            <el-divider content-position="left">实体抽取</el-divider>
+
+            <el-form-item label="抽取方式">
+              <el-radio-group v-model="formData.extract_mode">
+                <el-radio label="none">不抽取</el-radio>
+                <el-radio label="basic">基础抽取</el-radio>
+                <el-radio label="advanced">高级抽取</el-radio>
+              </el-radio-group>
+              <div class="form-tip">
+                基础：抽取常见实体类型 | 高级：使用LLM进行智能抽取
+              </div>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 检索配置说明 -->
+        <el-tab-pane label="检索配置说明" name="retrieval-info">
+          <div class="info-panel">
+            <el-alert type="info" :closable="false">
+              <template #title>
+                <span style="display: flex; align-items: center; gap: 8px;">
+                  <el-icon><InfoFilled /></el-icon>
+                  检索配置已迁移至会话级别
+                </span>
+              </template>
+              <p>知识库的检索配置（如相似度阈值、返回数量、重排序等）现在可以在创建会话时进行调整，实现跨知识库的统一检索配置。</p>
+              <p>这样设计的好处：</p>
+              <ul>
+                <li>支持跨多个知识库的统一检索配置</li>
+                <li>不同的会话可以使用不同的检索策略</li>
+                <li>知识库专注于数据处理，检索策略按需配置</li>
+              </ul>
+            </el-alert>
+
+            <el-divider />
+
+            <h4>默认检索配置</h4>
+            <el-descriptions :column="1" border>
+              <el-descriptions-item label="检索模式">向量检索（必选）+ 可选 BM25/图谱检索</el-descriptions-item>
+              <el-descriptions-item label="相似度阈值">70%</el-descriptions-item>
+              <el-descriptions-item label="返回数量">5条</el-descriptions-item>
+              <el-descriptions-item label="重排序">默认关闭</el-descriptions-item>
+            </el-descriptions>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
       <template #footer>
         <el-button @click="showCreateDialog = false">取消</el-button>
         <el-button type="primary" @click="saveKnowledgeBase" :loading="saving">
@@ -132,10 +179,13 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, InfoFilled } from '@element-plus/icons-vue'
 import { knowledgeApi } from '@/api/knowledge'
-import type { KnowledgeBase, CreateKnowledgeBaseRequest } from '@/types'
+import type {
+  KnowledgeBase,
+  CreateKnowledgeBaseRequest
+} from '@/types'
 
 const router = useRouter()
 
@@ -143,38 +193,32 @@ const loading = ref(false)
 const saving = ref(false)
 const showCreateDialog = ref(false)
 const editingId = ref<string>('')
-const formRef = ref<FormInstance>()
+const knowledgeBases = ref<KnowledgeBase[]>([])
+const activeTab = ref('basic')
+const formRef = ref()
 
-const formData = reactive<CreateKnowledgeBaseRequest & { status?: number }>({
+// 表单数据
+const formData = reactive<CreateKnowledgeBaseRequest>({
   name: '',
   description: '',
-  type: 'general',
-  embedding_model: 'bge-m3',
+  avatar: '',
+  is_public: false,
   chunk_size: 512,
   chunk_overlap: 100,
-  enable_graph: true,
-  enable_tag: true
+  graph_enabled: false,
+  bm25_enabled: false,
+  image_processing_mode: 'none',
+  extract_mode: 'none'
 })
 
-const formRules: FormRules = {
+const formRules = {
   name: [
-    { required: true, message: '请输入知识库名称', trigger: 'blur' },
-    { min: 2, max: 50, message: '名称长度在2-50个字符之间', trigger: 'blur' }
+    { required: true, message: '请输入知识库名称', trigger: 'blur' }
   ]
 }
 
-const knowledgeBases = ref<KnowledgeBase[]>([])
-
-function getStatusType(status: number) {
-  if (status === 1) return 'success'
-  if (status === 0) return 'info'
-  return 'warning'
-}
-
-function getStatusText(status: number) {
-  if (status === 1) return '启用'
-  if (status === 0) return '禁用'
-  return '未知'
+function goToDetail(id: string) {
+  router.push(`/knowledge/${id}`)
 }
 
 async function loadKnowledgeBases() {
@@ -182,7 +226,6 @@ async function loadKnowledgeBases() {
   try {
     const res = await knowledgeApi.getList()
     if (res.data) {
-      // 后端返回的是 {items: [], page: 1, page_size: 10, total: 0}
       knowledgeBases.value = (res.data as any).items || []
     }
   } catch (error) {
@@ -192,45 +235,99 @@ async function loadKnowledgeBases() {
   }
 }
 
-function goToDetail(id: string) {
-  router.push(`/knowledge/${id}`)
+function handleDialogOpen() {
+  if (editingId.value) {
+    // 编辑模式：加载现有数据
+    loadKnowledgeBaseData(editingId.value)
+  } else {
+    // 创建模式：重置表单
+    resetForm()
+  }
 }
 
-function editKnowledgeBase(kb: KnowledgeBase) {
-  editingId.value = kb.id
-  formData.name = kb.name
-  formData.description = kb.description || ''
-  formData.type = kb.type
-  formData.status = kb.status
-  showCreateDialog.value = true
+async function loadKnowledgeBaseData(id: string) {
+  try {
+    const res = await knowledgeApi.getDetail(id)
+    if (res.data) {
+      const data = res.data as KnowledgeBase
+
+      // 基本信息
+      formData.name = data.name || ''
+      formData.description = data.description || ''
+      formData.avatar = data.avatar || ''
+      formData.is_public = data.is_public || false
+
+      // 数据处理配置
+      if (data.setting) {
+        formData.chunk_size = data.setting.chunk_size ?? 512
+        formData.chunk_overlap = data.setting.chunk_overlap ?? 100
+        formData.graph_enabled = data.setting.graph_enabled ?? false
+        formData.bm25_enabled = data.setting.bm25_enabled ?? false
+        formData.image_processing_mode = data.setting.image_processing_mode || 'none'
+        formData.extract_mode = data.setting.extract_mode || 'none'
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load knowledge base:', error)
+  }
+}
+
+function resetForm() {
+  Object.assign(formData, {
+    name: '',
+    description: '',
+    avatar: '',
+    is_public: false,
+    chunk_size: 512,
+    chunk_overlap: 100,
+    graph_enabled: false,
+    bm25_enabled: false,
+    image_processing_mode: 'none',
+    extract_mode: 'none'
+  })
 }
 
 async function saveKnowledgeBase() {
-  if (!formRef.value) return
+  if (!formData.name) {
+    ElMessage.warning('请输入知识库名称')
+    return
+  }
 
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-
-    saving.value = true
-    try {
-      if (editingId.value) {
-        // 编辑模式
-        await knowledgeApi.update(editingId.value, formData)
-        ElMessage.success('知识库更新成功')
-      } else {
-        // 创建模式
-        await knowledgeApi.create(formData)
-        ElMessage.success('知识库创建成功')
-      }
-      showCreateDialog.value = false
-      resetForm()
-      await loadKnowledgeBases()
-    } catch (error: any) {
-      ElMessage.error(error.message || '操作失败')
-    } finally {
-      saving.value = false
+  saving.value = true
+  try {
+    const request: CreateKnowledgeBaseRequest = {
+      name: formData.name,
+      description: formData.description,
+      avatar: formData.avatar,
+      is_public: formData.is_public,
+      chunk_size: formData.chunk_size,
+      chunk_overlap: formData.chunk_overlap,
+      graph_enabled: formData.graph_enabled,
+      bm25_enabled: formData.bm25_enabled,
+      image_processing_mode: formData.image_processing_mode,
+      extract_mode: formData.extract_mode
     }
-  })
+
+    if (editingId.value) {
+      await knowledgeApi.update(editingId.value, request)
+      ElMessage.success('知识库更新成功')
+    } else {
+      await knowledgeApi.create(request)
+      ElMessage.success('知识库创建成功')
+    }
+
+    showCreateDialog.value = false
+    await loadKnowledgeBases()
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+async function editKnowledgeBase(kb: KnowledgeBase) {
+  editingId.value = kb.id
+  showCreateDialog.value = true
 }
 
 async function deleteKnowledgeBase(id: string) {
@@ -249,19 +346,6 @@ async function deleteKnowledgeBase(id: string) {
       ElMessage.error(error.message || '删除失败')
     }
   }
-}
-
-function resetForm() {
-  editingId.value = ''
-  formData.name = ''
-  formData.description = ''
-  formData.type = 'general'
-  formData.embedding_model = 'bge-m3'
-  formData.chunk_size = 512
-  formData.chunk_overlap = 100
-  formData.enable_graph = true
-  formData.enable_tag = true
-  formRef.value?.resetFields()
 }
 
 onMounted(() => {
@@ -291,8 +375,47 @@ onMounted(() => {
 }
 
 .form-tip {
-  margin-left: 12px;
   font-size: 12px;
   color: #909399;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.tag-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-left: 8px;
+}
+
+.dialog-tabs {
+  margin-bottom: 20px;
+}
+
+.info-panel {
+  padding: 16px;
+}
+
+.info-panel h4 {
+  margin-bottom: 16px;
+  color: #303133;
+}
+
+.info-panel p {
+  margin-bottom: 12px;
+  color: #606266;
+}
+
+.info-panel ul {
+  padding-left: 20px;
+  color: #606266;
+}
+
+.info-panel li {
+  margin-bottom: 8px;
+}
+
+:deep(.el-divider__text) {
+  font-size: 14px;
+  font-weight: 500;
 }
 </style>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	common_repository "link/internal/common"
+	"log"
 
 	"gorm.io/gorm"
 
@@ -28,6 +29,7 @@ func (r *messageRepository) Create(ctx context.Context, req *types.CreateMessage
 
 	// 从上下文获取租户ID（用于验证 session 属于该租户）
 	tenantID := getTenantIDFromContext(ctx)
+	log.Printf("📋 [MessageRepository.Create] 开始创建消息: messageID=%s, sessionID=%s, tenantID=%d", messageID, req.SessionID, tenantID)
 
 	// 验证 session 是否存在（如果 tenantID > 0，还需要验证租户）
 	var session types.SessionEntity
@@ -36,8 +38,10 @@ func (r *messageRepository) Create(ctx context.Context, req *types.CreateMessage
 		query = query.Where("tenant_id = ?", tenantID)
 	}
 	if err := query.First(&session).Error; err != nil {
+		log.Printf("❌ [MessageRepository.Create] Session 查询失败: sessionID=%s, tenantID=%d, error=%v", req.SessionID, tenantID, err)
 		return nil, fmt.Errorf("会话不存在或无权访问: %w", err)
 	}
+	log.Printf("✅ [MessageRepository.Create] Session 验证成功: session.tenantID=%d, session.userID=%d", session.TenantID, session.UserID)
 
 	// 创建消息实体
 	message := &types.MessageEntity{
