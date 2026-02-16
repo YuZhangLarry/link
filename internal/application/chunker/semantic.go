@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/cloudwego/eino-ext/components/document/transformer/splitter/semantic"
 	"github.com/cloudwego/eino/components/document"
@@ -293,12 +292,18 @@ func (c *SimpleChunker) splitBySize(document string) []string {
 		}
 
 		// 尝试在分隔符处找到更好的分割点
-		if end < docLen {
+		// 只有当剩余文本足够长时才查找分隔符
+		remaining := docLen - start
+		if end < docLen && remaining > c.config.Overlap+50 {
 			textSegment := string(runes[start:end])
 			bestBreak := c.findBestBreakPoint(textSegment, end-start)
 			if bestBreak > 0 {
 				end = start + bestBreak
 			}
+		} else if end >= docLen {
+			// 处理最后一块：直接取剩余全部，不再产生额外小块
+			chunks = append(chunks, string(runes[start:]))
+			break
 		}
 
 		chunks = append(chunks, string(runes[start:end]))
@@ -325,20 +330,33 @@ func (c *SimpleChunker) splitBySize(document string) []string {
 // findBestBreakPoint 在文本中查找最佳分割点
 func (c *SimpleChunker) findBestBreakPoint(text string, maxLen int) int {
 	// 从后往前搜索分隔符
+	textRunes := []rune(text)
+	textLen := len(textRunes)
+
 	for _, sep := range c.config.Separators {
-		// 在文本中查找最后一个出现的分隔符
-		searchText := text
-		if len(searchText) > maxLen {
-			searchText = searchText[:maxLen]
+		sepRunes := []rune(sep)
+
+		// 从后往前搜索分隔符（在maxLen范围内）
+		searchEnd := maxLen
+		if searchEnd > textLen {
+			searchEnd = textLen
 		}
 
-		lastIndex := strings.LastIndex(searchText, sep)
-		if lastIndex > 0 && lastIndex < maxLen {
-			sepLen := len(sep)
-			if c.config.KeepSeparator {
-				return lastIndex + sepLen
+		// 从后往前查找分隔符
+		for i := searchEnd - len(sepRunes); i >= 0; i-- {
+			match := true
+			for j := 0; j < len(sepRunes); j++ {
+				if i+j >= textLen || textRunes[i+j] != sepRunes[j] {
+					match = false
+					break
+				}
 			}
-			return lastIndex
+			if match {
+				if c.config.KeepSeparator {
+					return i + len(sepRunes)
+				}
+				return i
+			}
 		}
 	}
 

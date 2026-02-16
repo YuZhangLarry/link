@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"link/internal/container"
@@ -861,6 +862,179 @@ func (r *VectorRetriever) DeleteByExpr(ctx context.Context, kbID int64, expr str
 
 	log.Printf("[Milvus] Deleted by expr '%s' from %s", expr, collectionName)
 	return nil
+}
+
+// DeleteByChunkID 按 chunk_id 删除向量数据
+func (r *VectorRetriever) DeleteByChunkID(ctx context.Context, kbID int64, chunkID string) error {
+	if chunkID == "" {
+		return fmt.Errorf("chunk_id cannot be empty")
+	}
+
+	collectionName := r.getCollectionName(kbID)
+	// chunk_id 是 VarChar 字段，使用字符串相等匹配
+	expr := fmt.Sprintf("chunk_id == '%s'", chunkID)
+
+	err := r.client.Delete(ctx, collectionName, "", expr)
+	if err != nil {
+		return fmt.Errorf("delete by chunk_id failed: %w", err)
+	}
+
+	log.Printf("[Milvus] Deleted chunk_id='%s' from %s", chunkID, collectionName)
+	return nil
+}
+
+// DeleteByKnowledgeID 按 knowledge_id 删除所有相关向量数据
+func (r *VectorRetriever) DeleteByKnowledgeID(ctx context.Context, kbID int64, knowledgeID string) error {
+	if knowledgeID == "" {
+		return fmt.Errorf("knowledge_id cannot be empty")
+	}
+
+	collectionName := r.getCollectionName(kbID)
+	// knowledge_id 是 VarChar 字段，使用字符串相等匹配
+	expr := fmt.Sprintf("knowledge_id == '%s'", knowledgeID)
+
+	err := r.client.Delete(ctx, collectionName, "", expr)
+	if err != nil {
+		return fmt.Errorf("delete by knowledge_id failed: %w", err)
+	}
+
+	log.Printf("[Milvus] Deleted knowledge_id='%s' from %s", knowledgeID, collectionName)
+	return nil
+}
+
+// DeleteByKBID 按 kb_id 删除所有向量数据（删除整个知识库时使用）
+func (r *VectorRetriever) DeleteByKBID(ctx context.Context, kbID int64) error {
+	collectionName := r.getCollectionName(kbID)
+
+	// 删除整个 collection
+	err := r.client.DropCollection(ctx, collectionName)
+	if err != nil {
+		return fmt.Errorf("drop collection failed: %w", err)
+	}
+
+	log.Printf("[Milvus] Dropped collection %s", collectionName)
+	return nil
+}
+
+// DeleteByTenantID 按租户ID删除所有向量数据（用于租户删除场景）
+func (r *VectorRetriever) DeleteByTenantID(ctx context.Context, tenantID int64) error {
+	if tenantID <= 0 {
+		return fmt.Errorf("invalid tenant_id: %d", tenantID)
+	}
+
+	// 获取所有集合
+	collections, err := r.client.ListCollections(ctx)
+	if err != nil {
+		return fmt.Errorf("list collections failed: %w", err)
+	}
+
+	deletedCount := 0
+	for _, coll := range collections {
+		// 获取集合信息以确认是否为知识库集合
+		collInfo, err := r.client.DescribeCollection(ctx, coll.Name)
+		if err != nil {
+			log.Printf("[Milvus] Warning: failed to describe collection %s: %v", coll.Name, err)
+			continue
+		}
+
+		// 检查是否包含 tenant_id 字段
+		hasTenantIDField := false
+		for _, field := range collInfo.Schema.Fields {
+			if field.Name == "tenant_id" {
+				hasTenantIDField = true
+				break
+			}
+		}
+
+		if !hasTenantIDField {
+			continue
+		}
+
+		// 使用表达式删除该租户的数据
+		expr := fmt.Sprintf("tenant_id == %d", tenantID)
+		err = r.client.Delete(ctx, coll.Name, "", expr)
+		if err != nil {
+			log.Printf("[Milvus] Warning: failed to delete tenant_id=%d from %s: %v", tenantID, coll.Name, err)
+			continue
+		}
+		deletedCount++
+		log.Printf("[Milvus] Deleted tenant_id=%d data from collection %s", tenantID, coll.Name)
+	}
+
+	log.Printf("[Milvus] Deleted tenant_id=%d data from %d collections", tenantID, deletedCount)
+	return nil
+}
+
+// DeleteByChunkIDs 批量按 chunk_id 删除向量数据
+func (r *VectorRetriever) DeleteByChunkIDs(ctx context.Context, kbID int64, chunkIDs []string) error {
+	if len(chunkIDs) == 0 {
+		return fmt.Errorf("chunk_ids cannot be empty")
+	}
+
+	collectionName := r.getCollectionName(kbID)
+
+	// 构建删除表达式（批量）
+	var chunkIDExprs []string
+	for _, chunkID := range chunkIDs {
+		chunkIDExprs = append(chunkIDExprs, fmt.Sprintf("'%s'", chunkID))
+	}
+	expr := fmt.Sprintf("chunk_id in [%s]", strings.Join(chunkIDExprs, ", "))
+
+	err := r.client.Delete(ctx, collectionName, "", expr)
+	if err != nil {
+		return fmt.Errorf("delete by chunk_ids failed: %w", err)
+	}
+
+	log.Printf("[Milvus] Deleted %d chunk_ids from %s", len(chunkIDs), collectionName)
+	return nil
+}
+
+// DeleteByKnowledgeIDs 批量按 knowledge_id 删除向量数据
+func (r *VectorRetriever) DeleteByKnowledgeIDs(ctx context.Context, kbID int64, knowledgeIDs []string) error {
+	if len(knowledgeIDs) == 0 {
+		return fmt.Errorf("knowledge_ids cannot be empty")
+	}
+
+	collectionName := r.getCollectionName(kbID)
+
+	// 构建删除表达式（批量）
+	var knowledgeIDExprs []string
+	for _, knowledgeID := range knowledgeIDs {
+		knowledgeIDExprs = append(knowledgeIDExprs, fmt.Sprintf("'%s'", knowledgeID))
+	}
+	expr := fmt.Sprintf("knowledge_id in [%s]", strings.Join(knowledgeIDExprs, ", "))
+
+	err := r.client.Delete(ctx, collectionName, "", expr)
+	if err != nil {
+		return fmt.Errorf("delete by knowledge_ids failed: %w", err)
+	}
+
+	log.Printf("[Milvus] Deleted %d knowledge_ids from %s", len(knowledgeIDs), collectionName)
+	return nil
+}
+
+// GetDeleteStats 获取删除统计信息（用于验证删除操作）
+func (r *VectorRetriever) GetDeleteStats(ctx context.Context, kbID int64) (map[string]int64, error) {
+	collectionName := r.getCollectionName(kbID)
+
+	// 获取集合统计信息
+	stats, err := r.client.GetCollectionStatistics(ctx, collectionName)
+	if err != nil {
+		return nil, fmt.Errorf("get collection statistics failed: %w", err)
+	}
+
+	result := make(map[string]int64)
+	// 解析统计信息（GetCollectionStatistics 返回 map[string]string）
+	for k, v := range stats {
+		// 尝试将字符串转换为 int64
+		var count int64
+		_, err := fmt.Sscanf(v, "%d", &count)
+		if err == nil {
+			result[k] = count
+		}
+	}
+
+	return result, nil
 }
 
 // QueryOptions 查询选项

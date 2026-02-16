@@ -89,16 +89,14 @@ func (Chunk) TableName() string {
 // KBSetting 知识库设置实体
 // 对应 kb_settings 表
 type KBSetting struct {
-	ID                    int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	KBID                  string    `json:"kb_id" gorm:"not null;type:varchar(36);uniqueIndex:uk_kb_id"`
-	GraphEnabled          bool      `json:"graph_enabled" gorm:"type:tinyint(1);default:0"`
-	BM25Enabled           *bool     `json:"bm25_enabled,omitempty" gorm:"type:tinyint(1)"`
-	ChunkingConfig        *string   `json:"chunking_config,omitempty" gorm:"type:json"`
-	ImageProcessingConfig *string   `json:"image_processing_config,omitempty" gorm:"type:json"`
-	ExtractConfig         *string   `json:"extract_config,omitempty" gorm:"type:json"`
-	SettingsJSON          *string   `json:"settings_json,omitempty" gorm:"type:json"`
-	CreatedAt             time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt             time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	ID             int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	KBID           string    `json:"kb_id" gorm:"not null;type:varchar(36);uniqueIndex:uk_kb_id"`
+	GraphEnabled   bool      `json:"graph_enabled" gorm:"type:tinyint(1);default:0"`
+	BM25Enabled    *bool     `json:"bm25_enabled,omitempty" gorm:"type:tinyint(1)"`
+	ChunkingConfig *string   `json:"chunking_config,omitempty" gorm:"type:json"`
+	SettingsJSON   *string   `json:"settings_json,omitempty" gorm:"type:json"`
+	CreatedAt      time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (KBSetting) TableName() string {
@@ -112,12 +110,10 @@ type CreateKnowledgeBaseRequest struct {
 	Avatar      string `json:"avatar"`
 	IsPublic    bool   `json:"is_public"`
 	// 检索配置
-	ChunkSize             *int   `json:"chunk_size,omitempty"`
-	ChunkOverlap          *int   `json:"chunk_overlap,omitempty"`
-	GraphEnabled          *bool  `json:"graph_enabled,omitempty"`
-	BM25Enabled           *bool  `json:"bm25_enabled,omitempty"`
-	ImageProcessingConfig string `json:"image_processing_config,omitempty"` // JSON配置
-	ExtractConfig         string `json:"extract_config,omitempty"`          // JSON配置
+	ChunkSize    *int  `json:"chunk_size,omitempty"`
+	ChunkOverlap *int  `json:"chunk_overlap,omitempty"`
+	GraphEnabled *bool `json:"graph_enabled,omitempty"`
+	BM25Enabled  *bool `json:"bm25_enabled,omitempty"`
 	// 向后兼容字段（会转换为 settings_json）
 	RetrievalMode       *string  `json:"retrieval_mode,omitempty"`
 	SimilarityThreshold *float64 `json:"similarity_threshold,omitempty"`
@@ -141,13 +137,10 @@ type UpdateKnowledgeBaseRequest struct {
 	IsPublic    *bool   `json:"is_public"`
 	Status      *int8   `json:"status" binding:"omitempty,oneof=0 1"`
 	// 检索配置
-	ChunkSize             *int    `json:"chunk_size,omitempty"`
-	ChunkOverlap          *int    `json:"chunk_overlap,omitempty"`
-	GraphEnabled          *bool   `json:"graph_enabled,omitempty"`
-	BM25Enabled           *bool   `json:"bm25_enabled,omitempty"`
-	ImageProcessingConfig *string `json:"image_processing_config,omitempty"`
-	ExtractConfig         *string `json:"extract_config,omitempty"`
-	// 向后兼容字段
+	ChunkSize           *int     `json:"chunk_size,omitempty"`
+	ChunkOverlap        *int     `json:"chunk_overlap,omitempty"`
+	GraphEnabled        *bool    `json:"graph_enabled,omitempty"`
+	BM25Enabled         *bool    `json:"bm25_enabled,omitempty"`
 	RetrievalMode       *string  `json:"retrieval_mode,omitempty"`
 	SimilarityThreshold *float64 `json:"similarity_threshold,omitempty"`
 	TopK                *int     `json:"top_k,omitempty"`
@@ -252,11 +245,9 @@ type KBSettingResponse struct {
 	SummaryModelID   string `json:"summary_model_id,omitempty"`
 	RerankModelID    string `json:"rerank_model_id,omitempty"`
 	// 处理配置
-	ChunkingConfig        string `json:"chunking_config,omitempty"`
-	ImageProcessingConfig string `json:"image_processing_config,omitempty"`
-	CosConfig             string `json:"cos_config,omitempty"`
-	VLMConfig             string `json:"vlm_config,omitempty"`
-	ExtractConfig         string `json:"extract_config,omitempty"`
+	ChunkingConfig string `json:"chunking_config,omitempty"`
+	CosConfig      string `json:"cos_config,omitempty"`
+	VLMConfig      string `json:"vlm_config,omitempty"`
 	// 扩展字段
 	SettingsJSON *string   `json:"settings_json,omitempty"`
 	UpdatedAt    time.Time `json:"updated_at"`

@@ -1,13 +1,13 @@
 package types
 
-// RetrieverType represents the type of retriever
+// RetrieverType represents the type of rag
 type RetrieverType string
 
 // RetrieverType constants
 const (
-	KeywordsRetrieverType  RetrieverType = "keywords"  // Keywords retriever
-	VectorRetrieverType    RetrieverType = "vector"    // Vector retriever
-	WebSearchRetrieverType RetrieverType = "websearch" // Web search retriever
+	KeywordsRetrieverType  RetrieverType = "keywords"  // Keywords rag
+	VectorRetrieverType    RetrieverType = "vector"    // Vector rag
+	WebSearchRetrieverType RetrieverType = "websearch" // Web search rag
 )
 
 type RetrieveParams struct {
@@ -37,7 +37,7 @@ type RetrieveParams struct {
 	RetrieverType RetrieverType // Retriever type
 }
 
-// RetrieverEngineParams represents the parameters for retriever engine
+// RetrieverEngineParams represents the parameters for rag engine
 type RetrieverEngineParams struct {
 	// Retriever type
 	RetrieverType RetrieverType `yaml:"retriever_type"        json:"retriever_type"`

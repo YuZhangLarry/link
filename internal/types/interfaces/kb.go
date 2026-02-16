@@ -283,6 +283,12 @@ type Neo4jGraphRepository interface {
 	// DeleteRelation 删除单个关系
 	DeleteRelation(ctx context.Context, namespace types.NameSpace, relationID string) error
 
+	// DeleteByChunkID 按 chunk_id 删除相关图谱数据（用于文档删除）
+	DeleteByChunkID(ctx context.Context, namespace types.NameSpace, chunkID string) error
+
+	// DeleteByKnowledgeID 按 knowledge_id 删除相关图谱数据（用于文档删除）
+	DeleteByKnowledgeID(ctx context.Context, namespace types.NameSpace, knowledgeID string) error
+
 	// DeleteGraph 删除图谱数据
 	DeleteGraph(ctx context.Context, namespaces []types.NameSpace) error
 

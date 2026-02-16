@@ -145,14 +145,6 @@ func (h *KnowledgeBaseHandler) Create(c *gin.Context) {
 		ChunkingConfig: chunkingConfigJSON,
 	}
 
-	// 处理其他 JSON 配置字段
-	if req.ImageProcessingConfig != "" && req.ImageProcessingConfig != "null" {
-		setting.ImageProcessingConfig = &req.ImageProcessingConfig
-	}
-	if req.ExtractConfig != "" && req.ExtractConfig != "null" {
-		setting.ExtractConfig = &req.ExtractConfig
-	}
-
 	// 将其他配置也存入 settings_json
 	if req.CosConfig != "" && req.CosConfig != "null" {
 		settingsJSON["cos_config"] = req.CosConfig
@@ -289,14 +281,6 @@ func (h *KnowledgeBaseHandler) GetDetail(c *gin.Context) {
 					}
 				}
 			}
-		}
-
-		// image_processing_config 和 extract_config (如果有)
-		if kb.Setting.ImageProcessingConfig != nil {
-			settingData["image_processing_config"] = *kb.Setting.ImageProcessingConfig
-		}
-		if kb.Setting.ExtractConfig != nil {
-			settingData["extract_config"] = *kb.Setting.ExtractConfig
 		}
 	}
 
@@ -450,14 +434,6 @@ func (h *KnowledgeBaseHandler) Update(c *gin.Context) {
 			str := string(configJSON)
 			setting.ChunkingConfig = &str
 		}
-	}
-
-	// 处理其他配置字段
-	if req.ImageProcessingConfig != nil {
-		setting.ImageProcessingConfig = req.ImageProcessingConfig
-	}
-	if req.ExtractConfig != nil {
-		setting.ExtractConfig = req.ExtractConfig
 	}
 
 	// 处理检索模式

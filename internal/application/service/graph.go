@@ -67,12 +67,21 @@ func NewGraphServiceWithChunks(graphRepo interfaces.Neo4jGraphRepository, graphQ
 // 图谱提取相关类型
 // ========================================
 
+// ExtractionMode 提取模式
+type ExtractionMode string
+
+const (
+	ExtractionModeDocument ExtractionMode = "document" // 文档入库模式：完整提取
+	ExtractionModeQuery    ExtractionMode = "query"    // 查询模式：仅提取相关
+)
+
 // ChunkExtractionInput 文档块提取输入
 type ChunkExtractionInput struct {
-	KBID     string // 知识库ID
-	ChunkID  string // 文档块ID
-	Document string // 文档内容
-	Query    string // 提取查询
+	KBID     string         // 知识库ID
+	ChunkID  string         // 文档块ID
+	Document string         // 文档内容
+	Query    string         // 提取查询
+	Mode     ExtractionMode // 提取模式：document/query
 }
 
 // ExtractedGraphData 提取的图谱数据
@@ -90,9 +99,28 @@ type graphCache struct {
 }
 
 // ExtractGraphFromChunks 从文档块中提取图谱（并发处理，最多4个线程）
+// 默认使用文档入库模式（完整提取）
 func (s *GraphService) ExtractGraphFromChunks(
 	ctx context.Context,
 	inputs []*ChunkExtractionInput,
+) (*types.GraphData, error) {
+	return s.ExtractGraphFromChunksWithMode(ctx, inputs, ExtractionModeDocument)
+}
+
+// ExtractGraphFromChunksWithQuery 从文档块中提取图谱（查询模式）
+// 仅提取与查询相关的实体和关系
+func (s *GraphService) ExtractGraphFromChunksWithQuery(
+	ctx context.Context,
+	inputs []*ChunkExtractionInput,
+) (*types.GraphData, error) {
+	return s.ExtractGraphFromChunksWithMode(ctx, inputs, ExtractionModeQuery)
+}
+
+// ExtractGraphFromChunksWithMode 从文档块中提取图谱（指定模式）
+func (s *GraphService) ExtractGraphFromChunksWithMode(
+	ctx context.Context,
+	inputs []*ChunkExtractionInput,
+	mode ExtractionMode,
 ) (*types.GraphData, error) {
 	if len(inputs) == 0 {
 		return &types.GraphData{}, nil
@@ -104,7 +132,7 @@ func (s *GraphService) ExtractGraphFromChunks(
 	s.graphCache.relations = make(map[string]*types.GraphRelation)
 	s.graphCache.mutex.Unlock()
 
-	log.Printf("[GraphService] Starting concurrent extraction for %d chunks", len(inputs))
+	log.Printf("[GraphService] Starting concurrent extraction for %d chunks, mode=%s", len(inputs), mode)
 
 	// 使用 semaphore 限制并发数为 4
 	semaphore := make(chan struct{}, 4)
@@ -123,10 +151,16 @@ func (s *GraphService) ExtractGraphFromChunks(
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			log.Printf("[GraphService] Processing chunk %s", inp.ChunkID)
+			// 确定输入的模式（如果未设置则使用传入的模式）
+			extractionMode := inp.Mode
+			if extractionMode == "" {
+				extractionMode = mode
+			}
+
+			log.Printf("[GraphService] Processing chunk %s, mode=%s", inp.ChunkID, extractionMode)
 
 			// 提取实体
-			nodes, err := s.extractEntities(ctx, inp.ChunkID, inp.Document, inp.Query)
+			nodes, err := s.extractEntities(ctx, inp.ChunkID, inp.Document, inp.Query, extractionMode)
 			if err != nil {
 				errors[idx] = fmt.Errorf("failed to extract entities from chunk %s: %w", inp.ChunkID, err)
 				log.Printf("[GraphService] Error extracting entities from chunk %s: %v", inp.ChunkID, err)
@@ -134,7 +168,7 @@ func (s *GraphService) ExtractGraphFromChunks(
 			}
 
 			// 提取关系（基于已提取的实体）
-			relations, err := s.extractRelations(ctx, inp.KBID, inp.ChunkID, inp.Document, inp.Query, nodes)
+			relations, err := s.extractRelations(ctx, inp.KBID, inp.ChunkID, inp.Document, inp.Query, nodes, extractionMode)
 			if err != nil {
 				errors[idx] = fmt.Errorf("failed to extract relations from chunk %s: %w", inp.ChunkID, err)
 				log.Printf("[GraphService] Error extracting relations from chunk %s: %v", inp.ChunkID, err)
@@ -170,7 +204,7 @@ func (s *GraphService) ExtractGraphFromChunks(
 		}
 	}
 
-	log.Printf("[GraphService] Extraction completed: %d/%d chunks succeeded", len(validResults), len(inputs))
+	log.Printf("[GraphService] Extraction completed: %d/%d chunks succeeded, mode=%s", len(validResults), len(inputs), mode)
 
 	// 合并所有提取的图谱数据
 	mergedGraph, err := s.mergeExtractedGraphs(ctx, validResults)
@@ -188,9 +222,17 @@ func (s *GraphService) ExtractGraphFromChunks(
 func (s *GraphService) extractEntities(
 	ctx context.Context,
 	chunkID, document, query string,
+	mode ExtractionMode, // 提取模式：document/query
 ) ([]*types.GraphNode, error) {
-	// 加载实体提取提示词模板
-	promptTemplate, err := config.LoadPromptTemplate("entity_extraction")
+	// 根据模式选择提示词模板
+	var templateName string
+	if mode == ExtractionModeQuery {
+		templateName = "entity_extraction_query"
+	} else {
+		templateName = "entity_extraction"
+	}
+
+	promptTemplate, err := config.LoadPromptTemplate(templateName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load entity extraction template: %w", err)
 	}
@@ -198,7 +240,12 @@ func (s *GraphService) extractEntities(
 	// 替换占位符
 	prompt := strings.Replace(promptTemplate, "{{document}}", document, 1)
 
-	log.Printf("[GraphService] Entity extraction prompt length: %d", len(prompt))
+	// 查询模式：添加查询信息
+	if mode == ExtractionModeQuery && query != "" {
+		prompt = strings.Replace(prompt, "{{query}}", query, 1)
+	}
+
+	log.Printf("[GraphService] Entity extraction mode=%s prompt length: %d", mode, len(prompt))
 
 	// 创建 Chat
 	chatConfig := config.LoadChatConfig()
@@ -256,9 +303,17 @@ func (s *GraphService) extractRelations(
 	ctx context.Context,
 	kbID, chunkID, document, query string,
 	entities []*types.GraphNode,
+	mode ExtractionMode, // 提取模式：document/query
 ) ([]*types.GraphRelation, error) {
-	// 加载关系提取提示词模板
-	promptTemplate, err := config.LoadPromptTemplate("relation_extraction")
+	// 根据模式选择提示词模板
+	var templateName string
+	if mode == ExtractionModeQuery {
+		templateName = "relation_extraction_query"
+	} else {
+		templateName = "relation_extraction"
+	}
+
+	promptTemplate, err := config.LoadPromptTemplate(templateName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load relation extraction template: %w", err)
 	}
@@ -274,7 +329,12 @@ func (s *GraphService) extractRelations(
 	prompt := strings.Replace(promptTemplate, "{{entities}}", entitiesList, 1)
 	prompt = strings.Replace(prompt, "{{document}}", document, 1)
 
-	log.Printf("[GraphService] Relation extraction prompt length: %d", len(prompt))
+	// 查询模式：添加查询信息
+	if mode == ExtractionModeQuery && query != "" {
+		prompt = strings.Replace(prompt, "{{query}}", query, 1)
+	}
+
+	log.Printf("[GraphService] Relation extraction mode=%s prompt length: %d", mode, len(prompt))
 
 	// 创建 Chat
 	chatConfig := config.LoadChatConfig()
@@ -710,6 +770,89 @@ func (s *GraphService) DeleteRelation(ctx context.Context, namespace types.NameS
 	delete(s.graphCache.relations, relationID)
 
 	return nil
+}
+
+// ========================================
+// 按知识库/分块删除 (用于文档删除时的清理)
+// ========================================
+
+// DeleteByChunkID 删除与指定 chunk_id 相关的所有图谱数据
+func (s *GraphService) DeleteByChunkID(ctx context.Context, namespace types.NameSpace, chunkID string) error {
+	log.Printf("[Service] DeleteByChunkID START: namespace.KBID=%s, chunk_id=%s", namespace.KBID, chunkID)
+
+	err := s.graphRepo.DeleteByChunkID(ctx, namespace, chunkID)
+
+	if err != nil {
+		log.Printf("[Service] DeleteByChunkID ERROR: %v", err)
+		return err
+	}
+
+	// 从缓存中移除相关的节点和关系
+	s.graphCache.mutex.Lock()
+	defer s.graphCache.mutex.Unlock()
+
+	// 移除包含该 chunk_id 的所有关系
+	for id, rel := range s.graphCache.relations {
+		if containsChunkID(rel.ChunkIDs, chunkID) {
+			delete(s.graphCache.relations, id)
+		}
+	}
+	// 移除该 chunk 对应的节点
+	delete(s.graphCache.nodes, chunkID)
+
+	log.Printf("[Service] DeleteByChunkID SUCCESS: chunk_id=%s", chunkID)
+
+	return nil
+}
+
+// DeleteByKnowledgeID 删除与指定 knowledge_id 相关的所有图谱数据
+func (s *GraphService) DeleteByKnowledgeID(ctx context.Context, namespace types.NameSpace, knowledgeID string) error {
+	log.Printf("[Service] DeleteByKnowledgeID START: namespace.KBID=%s, knowledge_id=%s", namespace.KBID, knowledgeID)
+
+	err := s.graphRepo.DeleteByKnowledgeID(ctx, namespace, knowledgeID)
+
+	if err != nil {
+		log.Printf("[Service] DeleteByKnowledgeID ERROR: %v", err)
+		return err
+	}
+
+	// 从缓存中移除相关的节点和关系
+	s.graphCache.mutex.Lock()
+	defer s.graphCache.mutex.Unlock()
+
+	// 移除该 knowledge 对应的节点
+	delete(s.graphCache.nodes, knowledgeID)
+
+	// 移除所有与该 knowledge_id 节点相连的关系
+	for id, rel := range s.graphCache.relations {
+		if rel.Source == knowledgeID || rel.Target == knowledgeID {
+			delete(s.graphCache.relations, id)
+		}
+	}
+
+	log.Printf("[Service] DeleteByKnowledgeID SUCCESS: knowledge_id=%s", knowledgeID)
+
+	return nil
+}
+
+// containsChunkID 检查关系的 ChunkIDs 列表中是否包含指定的 chunk_id
+func containsChunkID(chunkIDs []string, chunkID string) bool {
+	for _, id := range chunkIDs {
+		if id == chunkID {
+			return true
+		}
+	}
+	return false
+}
+
+// containsKnowledgeID 检查关系的 KnowledgeIDs 列表中是否包含指定的 knowledge_id
+func containsKnowledgeID(knowledgeIDs []string, knowledgeID string) bool {
+	for _, id := range knowledgeIDs {
+		if id == knowledgeID {
+			return true
+		}
+	}
+	return false
 }
 
 // ========================================

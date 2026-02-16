@@ -383,7 +383,11 @@ func (h *KnowledgeHandlerFull) parallelBuildData(
 			Type:      knowledge.Type,
 		}
 
-		if err := h.graphService.AddGraph(ctx, namespace, []*types.GraphData{graphData[0]}); err != nil {
+		// 使用独立的 context 避免 HTTP 请求超时导致写入失败
+		neo4jCtx, neo4jCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer neo4jCancel()
+
+		if err := h.graphService.AddGraph(neo4jCtx, namespace, []*types.GraphData{graphData[0]}); err != nil {
 			log.Printf("[ParallelBuild] Warning: failed to save graph to Neo4j: %v", err)
 			// 图谱写入失败不影响主流程
 		} else {

@@ -138,8 +138,8 @@ func (n *Neo4jRepository) addGraph(ctx context.Context, namespace types.NameSpac
 				source.name = row.source,
 				source.kb_id = $kb_id,
 				source.knowledge_id = $knowledge_id
-			// 使用 MERGE 匹配或创建目标节点：使用 name + kb_id 匹配
-			MERGE (target:` + n.Label(namespace) + ` {name: $target, kb_id: $kb_id})
+			// 使用 MERGE 匹配或创建目标节点：使用 row.target 匹配
+			MERGE (target:` + n.Label(namespace) + ` {name: row.target, kb_id: $kb_id})
 			ON CREATE SET
 				target.id = COALESCE(row.target_id, row.target),
 				target.name = row.target,
@@ -1704,6 +1704,499 @@ func (n *Neo4jRepository) DeleteRelation(ctx context.Context, namespace types.Na
 	log.Printf("[Neo4j] DeleteRelation SUCCESS: relation_id=%s", relationID)
 
 	return nil
+}
+
+// ========================================
+// 按知识库/分块删除 (用于文档删除时的清理)
+// ========================================
+
+// DeleteByChunkID 删除与指定 chunk_id 相关的节点（关系会自动删除）
+func (n *Neo4jRepository) DeleteByChunkID(ctx context.Context, namespace types.NameSpace, chunkID string) error {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT DELETE BY CHUNK_ID - driver is nil")
+		return nil
+	}
+
+	if chunkID == "" {
+		return fmt.Errorf("chunk_id cannot be empty")
+	}
+
+	log.Printf("[Neo4j] DeleteByChunkID START: kb_id=%s, chunk_id=%s", namespace.KBID, chunkID)
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			log.Printf("[Neo4j] DeleteByChunkID session.Close error: %v", err)
+		}
+	}()
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// 删除该 chunk_id 对应的节点（关系会自动删除）
+		// 节点通过 name 或 id 匹配
+		deleteNodeQuery := `
+			MATCH (n)
+			WHERE (n.name = $chunk_id OR n.id = $chunk_id)
+			DETACH DELETE n
+			RETURN count(n) as deleted_count
+		`
+
+		result, err := tx.Run(ctx, deleteNodeQuery, map[string]interface{}{
+			"chunk_id": chunkID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete node by chunk_id: %w", err)
+		}
+
+		if result.Next(ctx) {
+			record := result.Record()
+			if count, ok := record.Get("deleted_count"); ok {
+				log.Printf("[Neo4j] Deleted %d nodes for chunk_id=%s", count, chunkID)
+			}
+		}
+
+		log.Printf("[Neo4j] DeleteByChunkID SUCCESS: chunk_id=%s", chunkID)
+
+		return nil, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] DeleteByChunkID ERROR: %v", err)
+		return err
+	}
+
+	log.Printf("[Neo4j] DeleteByChunkID SUCCESS: chunk_id=%s", chunkID)
+
+	return nil
+}
+
+// DeleteByKnowledgeID 删除与指定 knowledge_id 相关的所有节点（关系会自动删除）
+func (n *Neo4jRepository) DeleteByKnowledgeID(ctx context.Context, namespace types.NameSpace, knowledgeID string) error {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT DELETE BY KNOWLEDGE_ID - driver is nil")
+		return nil
+	}
+
+	if knowledgeID == "" {
+		return fmt.Errorf("knowledge_id cannot be empty")
+	}
+
+	log.Printf("[Neo4j] DeleteByKnowledgeID START: kb_id=%s, knowledge_id=%s", namespace.KBID, knowledgeID)
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			log.Printf("[Neo4j] DeleteByKnowledgeID session.Close error: %v", err)
+		}
+	}()
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// 删除该 knowledge_id 对应的节点（关系会自动删除）
+		deleteNodeQuery := `
+			MATCH (n {knowledge_id: $knowledge_id})
+			DETACH DELETE n
+			RETURN count(n) as deleted_count
+		`
+
+		result, err := tx.Run(ctx, deleteNodeQuery, map[string]interface{}{
+			"knowledge_id": knowledgeID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete node by knowledge_id: %w", err)
+		}
+
+		if result.Next(ctx) {
+			record := result.Record()
+			if count, ok := record.Get("deleted_count"); ok {
+				log.Printf("[Neo4j] Deleted %d nodes for knowledge_id=%s", count, knowledgeID)
+			}
+		}
+
+		log.Printf("[Neo4j] DeleteByKnowledgeID SUCCESS: knowledge_id=%s", knowledgeID)
+
+		return nil, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] DeleteByKnowledgeID ERROR: %v", err)
+		return err
+	}
+
+	log.Printf("[Neo4j] DeleteByKnowledgeID SUCCESS: knowledge_id=%s", knowledgeID)
+
+	return nil
+}
+
+// ========================================
+// 批量删除操作
+// ========================================
+
+// DeleteNodes 批量删除节点
+func (n *Neo4jRepository) DeleteNodes(ctx context.Context, namespace types.NameSpace, nodeIDs []string) error {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT DELETE NODES - driver is nil")
+		return nil
+	}
+
+	if len(nodeIDs) == 0 {
+		return fmt.Errorf("node_ids cannot be empty")
+	}
+
+	log.Printf("[Neo4j] DeleteNodes START: kb_id=%s, count=%d", namespace.KBID, len(nodeIDs))
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			log.Printf("[Neo4j] DeleteNodes session.Close error: %v", err)
+		}
+	}()
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// 先删除与这些节点相关的所有关系
+		deleteRelsQuery := `
+			MATCH ()-[r:RELATES_TO {kb_id: $kb_id}]->()
+			WHERE r.source in $node_ids OR r.target in $node_ids
+			DELETE r
+			RETURN count(r) as deleted_count
+		`
+
+		_, err := tx.Run(ctx, deleteRelsQuery, map[string]interface{}{
+			"kb_id":    namespace.KBID,
+			"node_ids": nodeIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete relations: %w", err)
+		}
+
+		// 删除节点本身
+		deleteNodesQuery := `
+			MATCH (n)
+			WHERE n.kb_id = $kb_id AND (n.name in $node_ids OR n.id in $node_ids)
+			DETACH DELETE n
+			RETURN count(n) as deleted_count
+		`
+
+		result, err := tx.Run(ctx, deleteNodesQuery, map[string]interface{}{
+			"kb_id":    namespace.KBID,
+			"node_ids": nodeIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete nodes: %w", err)
+		}
+
+		// 获取删除数量
+		if result.Next(ctx) {
+			record := result.Record()
+			if count, ok := record.Get("deleted_count"); ok {
+				log.Printf("[Neo4j] DeleteNodes deleted %d nodes", count)
+			}
+		}
+
+		log.Printf("[Neo4j] DeleteNodes SUCCESS: deleted %d nodes", len(nodeIDs))
+
+		return nil, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] DeleteNodes ERROR: failed to delete nodes: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// DeleteRelations 批量删除关系
+func (n *Neo4jRepository) DeleteRelations(ctx context.Context, namespace types.NameSpace, relationIDs []string) error {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT DELETE RELATIONS - driver is nil")
+		return nil
+	}
+
+	if len(relationIDs) == 0 {
+		return fmt.Errorf("relation_ids cannot be empty")
+	}
+
+	log.Printf("[Neo4j] DeleteRelations START: kb_id=%s, count=%d", namespace.KBID, len(relationIDs))
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			log.Printf("[Neo4j] DeleteRelations session.Close error: %v", err)
+		}
+	}()
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// 构建删除查询（批量）
+		deleteRelsQuery := `
+			MATCH ()-[r:RELATES_TO]->()
+			WHERE r.id in $relation_ids
+			DELETE r
+			RETURN count(r) as deleted_count
+		`
+
+		result, err := tx.Run(ctx, deleteRelsQuery, map[string]interface{}{
+			"relation_ids": relationIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete relations: %w", err)
+		}
+
+		// 获取删除数量
+		if result.Next(ctx) {
+			record := result.Record()
+			if count, ok := record.Get("deleted_count"); ok {
+				log.Printf("[Neo4j] DeleteRelations deleted %d relations", count)
+			}
+		}
+
+		log.Printf("[Neo4j] DeleteRelations SUCCESS: deleted %d relations", len(relationIDs))
+
+		return nil, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] DeleteRelations ERROR: failed to delete relations: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// DeleteByChunkIDs 批量按 chunk_id 删除相关节点
+func (n *Neo4jRepository) DeleteByChunkIDs(ctx context.Context, namespace types.NameSpace, chunkIDs []string) error {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT DELETE BY CHUNK_IDS - driver is nil")
+		return nil
+	}
+
+	if len(chunkIDs) == 0 {
+		return fmt.Errorf("chunk_ids cannot be empty")
+	}
+
+	log.Printf("[Neo4j] DeleteByChunkIDs START: kb_id=%s, count=%d", namespace.KBID, len(chunkIDs))
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			log.Printf("[Neo4j] DeleteByChunkIDs session.Close error: %v", err)
+		}
+	}()
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// 删除这些 chunk_ids 对应的节点（关系会自动删除）
+		deleteNodesQuery := `
+			MATCH (n)
+			WHERE n.name in $chunk_ids OR n.id in $chunk_ids
+			DETACH DELETE n
+			RETURN count(n) as deleted_count
+		`
+
+		result, err := tx.Run(ctx, deleteNodesQuery, map[string]interface{}{
+			"chunk_ids": chunkIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete nodes by chunk_ids: %w", err)
+		}
+
+		// 获取删除数量
+		if result.Next(ctx) {
+			record := result.Record()
+			if count, ok := record.Get("deleted_count"); ok {
+				log.Printf("[Neo4j] DeleteByChunkIDs deleted %d nodes", count)
+			}
+		}
+
+		log.Printf("[Neo4j] DeleteByChunkIDs SUCCESS: deleted %d chunk_ids", len(chunkIDs))
+
+		return nil, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] DeleteByChunkIDs ERROR: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// DeleteByKnowledgeIDs 批量按 knowledge_id 删除相关节点
+func (n *Neo4jRepository) DeleteByKnowledgeIDs(ctx context.Context, namespace types.NameSpace, knowledgeIDs []string) error {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT DELETE BY KNOWLEDGE_IDS - driver is nil")
+		return nil
+	}
+
+	if len(knowledgeIDs) == 0 {
+		return fmt.Errorf("knowledge_ids cannot be empty")
+	}
+
+	log.Printf("[Neo4j] DeleteByKnowledgeIDs START: kb_id=%s, count=%d", namespace.KBID, len(knowledgeIDs))
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
+	defer func() {
+		if err := session.Close(ctx); err != nil {
+			log.Printf("[Neo4j] DeleteByKnowledgeIDs session.Close error: %v", err)
+		}
+	}()
+
+	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		// 删除这些 knowledge_ids 对应的节点（关系会自动删除）
+		deleteNodesQuery := `
+			MATCH (n)
+			WHERE n.knowledge_id in $knowledge_ids
+			DETACH DELETE n
+			RETURN count(n) as deleted_count
+		`
+
+		result, err := tx.Run(ctx, deleteNodesQuery, map[string]interface{}{
+			"knowledge_ids": knowledgeIDs,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to delete nodes by knowledge_ids: %w", err)
+		}
+
+		// 获取删除数量
+		if result.Next(ctx) {
+			record := result.Record()
+			if count, ok := record.Get("deleted_count"); ok {
+				log.Printf("[Neo4j] DeleteByKnowledgeIDs deleted %d nodes", count)
+			}
+		}
+
+		log.Printf("[Neo4j] DeleteByKnowledgeIDs SUCCESS: deleted %d knowledge_ids", len(knowledgeIDs))
+
+		return nil, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] DeleteByKnowledgeIDs ERROR: %v", err)
+		return err
+	}
+
+	return nil
+}
+
+// ========================================
+// 统计信息
+// ========================================
+
+// GetGraphStats 获取图谱统计信息
+func (n *Neo4jRepository) GetGraphStats(ctx context.Context, namespace types.NameSpace) (*interfaces.GraphStats, error) {
+	if n.driver == nil {
+		log.Printf("[Neo4j] WARN: NOT SUPPORT GET GRAPH STATS - driver is nil")
+		return &interfaces.GraphStats{}, nil
+	}
+
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (interface{}, error) {
+		var nodeQuery string
+
+		if namespace.Knowledge != "" {
+			nodeQuery = `
+				MATCH (n {knowledge_id: $knowledge_id, kb_id: $kb_id})
+				RETURN count(n) as node_count
+			`
+		} else {
+			nodeQuery = `
+				MATCH (n {kb_id: $kb_id})
+				RETURN count(n) as node_count
+			`
+		}
+
+		nodeResult, err := tx.Run(ctx, nodeQuery, map[string]interface{}{
+			"knowledge_id": namespace.Knowledge,
+			"kb_id":        namespace.KBID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to query node count: %w", err)
+		}
+
+		var nodeCount int64
+		if nodeResult.Next(ctx) {
+			record := nodeResult.Record()
+			if count, ok := record.Get("node_count"); ok {
+				nodeCount = int64(convertToFloat64(count))
+			}
+		}
+
+		// 查询关系数量
+		var relQuery string
+		if namespace.Knowledge != "" {
+			relQuery = `
+				MATCH (n {kb_id: $kb_id})-[r:RELATES_TO]->(m {kb_id: $kb_id})
+				WHERE n.knowledge_id = $knowledge_id AND m.knowledge_id = $knowledge_id
+				RETURN count(DISTINCT r.id) as rel_count
+			`
+		} else {
+			relQuery = `
+				MATCH (n {kb_id: $kb_id})-[r:RELATES_TO]->(m {kb_id: $kb_id})
+				RETURN count(DISTINCT r.id) as rel_count
+			`
+		}
+
+		relResult, err := tx.Run(ctx, relQuery, map[string]interface{}{
+			"knowledge_id": namespace.Knowledge,
+			"kb_id":        namespace.KBID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to query relation count: %w", err)
+		}
+
+		var relCount int64
+		if relResult.Next(ctx) {
+			record := relResult.Record()
+			if count, ok := record.Get("rel_count"); ok {
+				relCount = int64(convertToFloat64(count))
+			}
+		}
+
+		// 收集关联的 chunk_ids
+		chunkQuery := `
+			MATCH (n {kb_id: $kb_id})
+			WHERE n.chunks IS NOT NULL AND size(n.chunks) > 0
+			UNWIND n.chunks as chunk_id
+			RETURN DISTINCT chunk_id
+			LIMIT 10000
+		`
+
+		chunkResult, err := tx.Run(ctx, chunkQuery, map[string]interface{}{
+			"kb_id": namespace.KBID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to query chunk ids: %w", err)
+		}
+
+		chunkIDs := make([]string, 0)
+		for chunkResult.Next(ctx) {
+			record := chunkResult.Record()
+			if chunkID, ok := record.Get("chunk_id"); ok && chunkID != nil {
+				chunkIDs = append(chunkIDs, fmt.Sprintf("%v", chunkID))
+			}
+		}
+
+		return &interfaces.GraphStats{
+			NodeCount:     nodeCount,
+			RelationCount: relCount,
+			ChunkCount:    int64(len(chunkIDs)),
+			ChunkIDs:      chunkIDs,
+		}, nil
+	})
+
+	if err != nil {
+		log.Printf("[Neo4j] ERROR: get graph stats failed: %v", err)
+		return nil, err
+	}
+
+	stats, ok := result.(*interfaces.GraphStats)
+	if !ok {
+		return &interfaces.GraphStats{}, nil
+	}
+
+	log.Printf("[Neo4j] GetGraphStats: nodes=%d, relations=%d, chunks=%d",
+		stats.NodeCount, stats.RelationCount, stats.ChunkCount)
+
+	return stats, nil
 }
 
 // Close 关闭 Neo4j 驱动连接
