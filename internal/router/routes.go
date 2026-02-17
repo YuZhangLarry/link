@@ -17,6 +17,7 @@ func SetupRoutes(
 	sessionHandler *handler.SessionHandler,
 	messageHandler *handler.MessageHandler,
 	tenantService *service.TenantService,
+	evaluationHandler *handler.EvaluationHandler,
 ) {
 	// ========================================
 	// 全局中间件
@@ -153,12 +154,27 @@ func SetupRoutes(
 				}
 
 				c.JSON(200, gin.H{
-					"code": 0,
+					"code":    0,
 					"message": "成功",
-					"data": userInfo,
+					"data":    userInfo,
 				})
 			})
 		}
+
+		// ========================================
+		// 测评管理路由（需要认证）
+		// ========================================
+		SetupEvaluationRoutes(
+			api,
+			authMiddleware,
+			evaluationHandler.CreateEvaluation,
+			evaluationHandler.GetEvaluation,
+			evaluationHandler.ListEvaluations,
+			evaluationHandler.GetEvaluationByID,
+			evaluationHandler.DeleteEvaluation,
+			evaluationHandler.CreateDataset,
+			evaluationHandler.ListDatasets,
+		)
 	}
 }
 
