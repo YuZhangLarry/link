@@ -299,31 +299,6 @@
               </template>
             </el-form-item>
 
-            <el-form-item label="图片处理配置">
-              <el-select
-                v-model="settingsForm.image_processing_mode"
-                placeholder="选择图片处理方式"
-                style="width: 100%"
-              >
-                <el-option label="不处理" value="none" />
-                <el-option label="提取文字" value="ocr" />
-                <el-option label="视觉描述" value="vlm" />
-                <el-option label="全部" value="all" />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="实体抽取配置">
-              <el-select
-                v-model="settingsForm.extract_mode"
-                placeholder="选择实体抽取方式"
-                style="width: 100%"
-              >
-                <el-option label="不抽取" value="none" />
-                <el-option label="规则抽取" value="rule" />
-                <el-option label="AI抽取" value="llm" />
-              </el-select>
-            </el-form-item>
-
             <el-form-item>
               <el-button type="primary" @click="saveSettings" :loading="settingsSaving">
                 保存设置
@@ -462,9 +437,7 @@ const settingsForm = reactive<UpdateKnowledgeBaseRequest>({
   chunk_size: 512,
   chunk_overlap: 100,
   graph_enabled: true,
-  bm25_enabled: false,
-  image_processing_mode: 'none',
-  extract_mode: 'none'
+  bm25_enabled: false
 })
 
 function formatDateTime(date?: string) {
@@ -521,8 +494,6 @@ async function loadKnowledgeBase() {
         settingsForm.chunk_overlap = data.setting.chunk_overlap ?? 100
         settingsForm.graph_enabled = data.setting.graph_enabled ?? false
         settingsForm.bm25_enabled = data.setting.bm25_enabled ?? false
-        settingsForm.image_processing_mode = data.setting.image_processing_mode ?? 'none'
-        settingsForm.extract_mode = data.setting.extract_mode ?? 'none'
       } else {
         // 向后兼容：使用默认值
         settingsForm.chunk_size = 512
@@ -710,7 +681,8 @@ async function handleSearch() {
 // 加载分块
 async function loadChunks() {
   if (!selectedKnowledgeId.value) {
-    chunks.value = []
+    // 没有选择文档时，加载所有分块
+    await loadAllChunks()
     return
   }
 
@@ -727,6 +699,25 @@ async function loadChunks() {
     }
   } catch (error) {
     console.error('Failed to load chunks:', error)
+    chunks.value = []
+  } finally {
+    chunksLoading.value = false
+  }
+}
+
+// 加载所有分块（不限定文档）
+async function loadAllChunks() {
+  chunksLoading.value = true
+  try {
+    const res = await knowledgeApi.getChunks(kbId.value, {})
+    if (res.data) {
+      const items = (res.data as any).items || res.data || []
+      chunks.value = Array.isArray(items) ? items : []
+    } else {
+      chunks.value = []
+    }
+  } catch (error) {
+    console.error('Failed to load all chunks:', error)
     chunks.value = []
   } finally {
     chunksLoading.value = false
@@ -757,9 +748,7 @@ async function saveSettings() {
       chunk_size: settingsForm.chunk_size,
       chunk_overlap: settingsForm.chunk_overlap,
       graph_enabled: settingsForm.graph_enabled,
-      bm25_enabled: settingsForm.bm25_enabled,
-      image_processing_mode: settingsForm.image_processing_mode,
-      extract_mode: settingsForm.extract_mode
+      bm25_enabled: settingsForm.bm25_enabled
     }
     await knowledgeApi.update(kbId.value, updateData)
     ElMessage.success('设置保存成功')
@@ -785,9 +774,7 @@ async function resetSettings() {
       chunk_size: 512,
       chunk_overlap: 100,
       graph_enabled: false,
-      bm25_enabled: false,
-      image_processing_mode: 'none',
-      extract_mode: 'none'
+      bm25_enabled: false
     }
     await knowledgeApi.update(kbId.value, updateData)
     ElMessage.success('重置成功')
@@ -805,6 +792,9 @@ function handleTabChange(tabName: string) {
     loadStats()
   } else if (tabName === 'documents' && knowledges.value.length === 0) {
     loadKnowledges()
+  } else if (tabName === 'chunks' && chunks.value.length === 0) {
+    // 首次切换到分块tab时，自动加载所有分块（不限定文档）
+    loadAllChunks()
   }
 }
 

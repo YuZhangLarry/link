@@ -4,18 +4,18 @@ templates:
     name: "关系提取格式"
     description: "从文档中提取实体之间的关系（如依赖、包含、关联等）"
     content: |
-      ## 历史对话背景
-      以下是用户与助手的对话历史，请仔细阅读以理解上下文：
+      # 任务说明
+      你是一个专业的知识图谱构建助手。请仔细阅读以下文档内容，提取其中实体之间的关系。
 
-      {{conversation}}
+      # 已识别的实体列表
+      {{entities}}
 
-      ## 当前用户问题
-      {{query}}
+      # 文档内容
+      {{document}}
 
-      ## 任务要求
-      请仔细阅读以下文档内容，从中提取出所有实体之间的关系。
+      # 任务要求
 
-      ### 关系类型
+      ## 关系类型
       请重点关注以下类型的关系：
       - **依赖关系**: A依赖于B（如 "Go语言依赖于C编译器"）
       - **包含关系**: A包含B（如 "API文档包含接口定义和示例"）
@@ -25,162 +25,57 @@ templates:
       - **位于关系**: A位于B（如 "配置文件位于/etc目录"）
       - **前后关系**: A在B之前/之后
       - **因果关系**: A导致B
-      - **其他关系**: 任何其他有意义的关联
+      - **其他关系**: contains（包含）、belongs（属于）、owns（拥有）等
 
-      ### 关系强度
-      请评估每个关系的强度（1-10分）：
-      - **9-10分**: 强依赖、核心关系、必然联系
-      - **7-8分**: 较强关联、重要关系
-      - **5-6分**: 一般关联、可选关系
-      - **3-4分**: 弱关联、间接关系
-      - **1-2分**: 微弱关联、可能关系
+      ## 关系类型映射
+      请将识别的关系映射到以下标准类型：
+      - 包含关系 → "contains"
+      - 依赖关系 → "depends"
+      - 关联关系 → "relates"
+      - 从属关系 → "belongs"
+      - 拥有关系 → "owns"
+      - 其他关系 → "other"
 
-      ### 提取要求
-      1. **双向性**: 识别关系的方向（A→B 或 B→A）
-      2. **传递性**: 考虑关系是否可以传递（A→B, B→C, 则 A→C）
-      3. **置信度**: 评估关系的可信程度
+      ## 提取要求
+      1. **仅使用已识别的实体**：只从上方实体列表中提取关系，不要添加新实体
+      2. **双向性**: 识别关系的方向（A→B）
+      3. **置信度**: 评估关系的可信程度（0-1）
       4. **证据**: 提供关系存在的文本证据
-      5. **上下文**: 保留关系所在的文档上下文
+      5. **关系强度**: 评估关系的重要性和紧密程度（1-10）
 
-      ### 输出格式
-      请按照以下JSON格式输出提取结果：
+      # 输出格式要求
 
-      ```json
-      {
-        "entities": [
-          {
-            "id": "entity_1",
-            "name": "实体名称",
-            "type": "人员|组织|产品|地点|时间|技术|其他"
-          }
-        ],
-        "relations": [
-          {
-            "id": "rel_1",
-            "source": "源实体名称",
-            "target": "目标实体名称",
-            "relation_type": "依赖|包含|关联|使用|实现|位于|前后|因果|其他",
-            "description": "关系的详细描述",
-            "strength": 8.0,  // 关系强度 1-10
-            "weight": 7.5,   // 关系权重 1-10
-            "direction": "directed",  // directed:有向 | undirected:无向
-            "confidence": 0.9,  // 置信度 0-1
-            "evidence": "支持该关系的文档内容",
-            "context": "关系所在的上下文",
-            "metadata": {
-              "chunk_id": "文档块ID",
-              "source_document": "来源文档"
-            }
-          }
-        ]
-      }
-      ```
+      **重要**：
+      1. 只返回JSON格式，不要添加任何其他文字说明
+      2. 不要使用markdown代码块标记（如```json）
+      3. 确保返回的是有效的JSON格式
+      4. 只返回relations数组，不要返回entities
 
-      ## 提取步骤
-      请按照以下步骤进行分析：
-      1. **识别实体**: 首先识别文档中的所有重要实体
-      2. **分析句子**: 逐句分析实体之间的语法和语义关系
-      3. **判断关系类型**: 确定实体之间的关系类别
-      4. **评估强度**: 评估关系的重要性和紧密程度
-      5. **收集证据**: 提取支持该关系的文本片段
-      6. **验证合理性**: 检查提取的关系是否合理、无矛盾
+      请严格按照以下JSON格式输出：
 
-      ## 关系提取示例
+      {"relations":[{"id":"rel_1","source":"源实体名称（必须来自实体列表）","target":"目标实体名称（必须来自实体列表）","type":"关系类型","description":"关系的详细描述","strength":8.0,"weight":7.5}]}
 
-      ### 示例1: 依赖关系
-      文档内容: "Neo4j图数据库需要Go语言驱动才能在Go项目中使用"
+      # 字段说明
+      - **id**: 关系的唯一标识符，可以使用 "rel_1", "rel_2" 等
+      - **source**: 源实体名称，必须来自上方实体列表
+      - **target**: 目标实体名称，必须来自上方实体列表
+      - **type**: 关系类型，从以下选择：contains、depends、relates、belongs、owns、other
+      - **description**: 关系的详细描述
+      - **strength**: 关系强度（1-10分），表示关系的重要性和紧密程度
+      - **weight**: 关系权重（1-10分），综合考虑强度和置信度
 
-      提取结果:
-      ```json
-      {
-        "entities": [
-          {"id": "e1", "name": "Neo4j", "type": "技术"},
-          {"id": "e2", "name": "Go语言", "type": "技术"},
-          {"id": "e3", "name": "Go驱动", "type": "技术"}
-        ],
-        "relations": [
-          {
-            "id": "r1",
-            "source": "Neo4j",
-            "target": "Go驱动",
-            "relation_type": "依赖",
-            "description": "Neo4j需要Go驱动才能在Go项目使用",
-            "strength": 9.0,
-            "weight": 8.5,
-            "direction": "directed",
-            "confidence": 1.0
-          },
-          {
-            "id": "r2",
-            "source": "Go驱动",
-            "target": "Go语言",
-            "relation_type": "使用",
-            "description": "Go驱动是为Go语言编写的",
-            "strength": 10.0,
-            "weight": 9.0,
-            "direction": "directed",
-            "confidence": 1.0
-          }
-        ]
-      }
-      ```
+      # 示例
 
-      ### 示例2: 包含关系
-      文档内容: "智能客服系统包含知识库管理、向量检索和图谱检索三个模块"
+      示例1：文档内容"Neo4j图数据库需要Go语言驱动才能在Go项目中使用"
+      输出：{"relations":[{"id":"rel_1","source":"Neo4j","target":"Go驱动","type":"depends","description":"Neo4j需要Go驱动才能在Go项目使用","strength":9.0,"weight":8.5}]}
 
-      提取结果:
-      ```json
-      {
-        "entities": [
-          {"id": "e1", "name": "智能客服系统", "type": "产品"},
-          {"id": "e2", "name": "知识库管理", "type": "模块"},
-          {"id": "e3", "name": "向量检索", "type": "模块"},
-          {"id": "e4", "name": "图谱检索", "type": "模块"}
-        ],
-        "relations": [
-          {
-            "id": "r1",
-            "source": "智能客服系统",
-            "target": "知识库管理",
-            "relation_type": "包含",
-            "description": "智能客服系统包含知识库管理模块",
-            "strength": 10.0,
-            "weight": 9.5,
-            "direction": "directed",
-            "confidence": 1.0
-          },
-          {
-            "id": "r2",
-            "source": "智能客服系统",
-            "target": "向量检索",
-            "relation_type": "包含",
-            "description": "智能客服系统包含向量检索模块",
-            "strength": 10.0,
-            "weight": 9.5,
-            "direction": "directed",
-            "confidence": 1.0
-          },
-          {
-            "id": "r3",
-            "source": "智能客服系统",
-            "target": "图谱检索",
-            "relation_type": "包含",
-            "description": "智能客服系统包含图谱检索模块",
-            "strength": 10.0,
-            "weight": 9.5,
-            "direction": "directed",
-            "confidence": 1.0
-          }
-        ]
-      }
-      ```
+      示例2：文档内容"智能客服系统包含知识库管理、向量检索和图谱检索三个模块"
+      输出：{"relations":[{"id":"rel_1","source":"智能客服系统","target":"知识库管理","type":"contains","description":"智能客服系统包含知识库管理模块","strength":10.0,"weight":9.5}]}
 
-      ## 注意事项
+      # 注意事项
       - 只提取文档中明确表达的关系，避免推测
-      - 如果关系不明确，降低置信度标记
-      - 同一对实体可能存在多种关系，请全部提取
-      - 保留原文中的具体措辞作为证据
-      - 对于隐含关系，需要在描述中说明推理过程
-
-      ## 改写后的问题
-      {{rewritten_query}}
+      - 如果关系不明确，降低strength和weight值
+      - source和target必须来自已识别的实体列表
+      - type必须是以下之一：contains、depends、relates、belongs、owns、other
+      - 如果文档中没有明确的关系，请返回空数组：{"relations":[]}
+      - 确保返回的是纯JSON格式，不要有任何前缀或后缀文字

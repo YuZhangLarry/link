@@ -247,3 +247,77 @@ func (r *retrievalSettingRepository) defaultSetting() *types.RetrievalSetting {
 		RerankEnabled:       nil,
 	}
 }
+
+// FindBySessionID 根据会话ID查找检索设置
+func (r *retrievalSettingRepository) FindBySessionID(ctx context.Context, sessionID string) (*types.RetrievalSetting, error) {
+	var setting types.RetrievalSetting
+	err := r.base.WithContext(ctx).
+		Where("session_id = ?", sessionID).
+		First(&setting).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// 返回默认设置
+		return r.defaultSetting(), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询检索设置失败: %w", err)
+	}
+
+	return &setting, nil
+}
+
+// UpsertBySessionID 根据会话ID创建或更新检索设置
+func (r *retrievalSettingRepository) UpsertBySessionID(ctx context.Context, sessionID string, tenantID int64, ragConfig *types.RAGConfig) error {
+	// 先查找是否存在
+	var existing types.RetrievalSetting
+	err := r.base.WithContext(ctx).
+		Where("session_id = ? AND tenant_id = ?", sessionID, tenantID).
+		First(&existing).Error
+
+	// 从 retrieval_modes 判断是否启用图谱
+	graphEnabled := false
+	for _, mode := range ragConfig.RetrievalModes {
+		if mode == "graph" {
+			graphEnabled = true
+			break
+		}
+	}
+
+	if err == gorm.ErrRecordNotFound {
+		// 不存在，创建新记录
+		vectorTopK := ragConfig.VectorTopK
+		vectorThreshold := ragConfig.SimilarityThreshold
+		bm25TopK := ragConfig.KeywordTopK
+		graphTopK := ragConfig.GraphTopK
+		hybridAlpha := types.Number(float64(ragConfig.Alpha))
+
+		setting := &types.RetrievalSetting{
+			TenantID:        tenantID,
+			SessionID:       &sessionID,
+			VectorTopK:      &vectorTopK,
+			VectorThreshold: &vectorThreshold,
+			BM25TopK:        &bm25TopK,
+			GraphEnabled:    &graphEnabled,
+			GraphTopK:       &graphTopK,
+			HybridAlpha:     &hybridAlpha,
+		}
+		return r.base.Create(ctx, setting)
+	}
+
+	if err != nil {
+		return fmt.Errorf("查询检索设置失败: %w", err)
+	}
+
+	// 存在，更新记录
+	hybridAlpha := types.Number(float64(ragConfig.Alpha))
+	updates := map[string]interface{}{
+		"vector_top_k":     ragConfig.VectorTopK,
+		"vector_threshold": ragConfig.SimilarityThreshold,
+		"bm25_top_k":       ragConfig.KeywordTopK,
+		"graph_enabled":    graphEnabled,
+		"graph_top_k":      ragConfig.GraphTopK,
+		"hybrid_alpha":     hybridAlpha,
+	}
+
+	return r.base.WithContext(ctx).Model(&existing).Updates(updates).Error
+}

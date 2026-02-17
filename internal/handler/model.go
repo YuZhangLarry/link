@@ -3,7 +3,7 @@ package handler
 import (
 	"link/internal/application/repository"
 	"link/internal/middleware"
-	"link/internal/models"
+	"link/internal/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,7 +31,7 @@ func (h *ModelHandler) GetList(c *gin.Context) {
 
 	modelType := c.Query("type")
 
-	var models []*models.Model
+	var models []*types.Model
 	var err error
 
 	if modelType != "" {

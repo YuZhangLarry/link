@@ -24,6 +24,7 @@ type SessionEntity struct {
 	SummaryParameters string     `json:"summary_parameters" gorm:"type:json;not null"`
 	AgentConfig       string     `json:"agent_config" gorm:"type:json"`
 	ContextConfig     string     `json:"context_config" gorm:"type:json"`
+	RAGConfig         string     `json:"rag_config,omitempty" gorm:"-"`                         // 不映射到数据库，存储在 retrieval_settings 表
 	Status            int8       `json:"status" gorm:"type:tinyint;default:1;index:idx_status"` // 0=归档, 1=正常
 	MessageCount      int        `json:"message_count" gorm:"-"`                                // 不映射到数据库，仅用于响应
 	CreatedAt         time.Time  `json:"created_at" gorm:"autoCreateTime"`
@@ -38,44 +39,47 @@ func (SessionEntity) TableName() string {
 
 // CreateSessionRequest 创建会话请求
 type CreateSessionRequest struct {
-	Title            string   `json:"title" binding:"required,max=255"`
-	Description      string   `json:"description"`
-	KBID             *string  `json:"kb_id"`
-	MaxRounds        int      `json:"max_rounds" binding:"min=1,max=50"`
-	EnableRewrite    bool     `json:"enable_rewrite"`
-	KeywordThreshold *float32 `json:"keyword_threshold" binding:"omitempty,min=0,max=1"`
-	VectorThreshold  *float32 `json:"vector_threshold" binding:"omitempty,min=0,max=1"`
-	RerankModelID    *string  `json:"rerank_model_id"`
-	EmbeddingTopK    *int     `json:"embedding_top_k" binding:"omitempty,min=1,max=100"`
-	RerankTopK       *int     `json:"rerank_top_k" binding:"omitempty,min=1,max=100"`
-	RerankThreshold  *float32 `json:"rerank_threshold" binding:"omitempty,min=0,max=1"`
+	Title            string     `json:"title" binding:"required,max=255"`
+	Description      string     `json:"description"`
+	KBID             *string    `json:"kb_id"`
+	MaxRounds        int        `json:"max_rounds" binding:"min=1,max=50"`
+	EnableRewrite    bool       `json:"enable_rewrite"`
+	KeywordThreshold *float32   `json:"keyword_threshold" binding:"omitempty,min=0,max=1"`
+	VectorThreshold  *float32   `json:"vector_threshold" binding:"omitempty,min=0,max=1"`
+	RerankModelID    *string    `json:"rerank_model_id"`
+	EmbeddingTopK    *int       `json:"embedding_top_k" binding:"omitempty,min=1,max=100"`
+	RerankTopK       *int       `json:"rerank_top_k" binding:"omitempty,min=1,max=100"`
+	RerankThreshold  *float32   `json:"rerank_threshold" binding:"omitempty,min=0,max=1"`
+	RAGConfig        *RAGConfig `json:"rag_config"` // RAG 配置
 }
 
 // UpdateSessionRequest 更新会话请求
 type UpdateSessionRequest struct {
-	Title            *string  `json:"title" binding:"omitempty,max=255"`
-	Description      *string  `json:"description"`
-	MaxRounds        *int     `json:"max_rounds" binding:"omitempty,min=1,max=50"`
-	EnableRewrite    *bool    `json:"enable_rewrite"`
-	KeywordThreshold *float32 `json:"keyword_threshold" binding:"omitempty,min=0,max=1"`
-	VectorThreshold  *float32 `json:"vector_threshold" binding:"omitempty,min=0,max=1"`
-	Status           *int8    `json:"status" binding:"omitempty,oneof=0 1"`
+	Title            *string    `json:"title" binding:"omitempty,max=255"`
+	Description      *string    `json:"description"`
+	MaxRounds        *int       `json:"max_rounds" binding:"omitempty,min=1,max=50"`
+	EnableRewrite    *bool      `json:"enable_rewrite"`
+	KeywordThreshold *float32   `json:"keyword_threshold" binding:"omitempty,min=0,max=1"`
+	VectorThreshold  *float32   `json:"vector_threshold" binding:"omitempty,min=0,max=1"`
+	Status           *int8      `json:"status" binding:"omitempty,oneof=0 1"`
+	RAGConfig        *RAGConfig `json:"rag_config"` // RAG 配置更新
 }
 
 // SessionResponse 会话响应
 type SessionResponse struct {
-	ID            string    `json:"id"`
-	TenantID      int64     `json:"tenant_id"`
-	UserID        int64     `json:"user_id"`
-	Title         string    `json:"title"`
-	Description   string    `json:"description"`
-	KBID          string    `json:"kb_id"`
-	MaxRounds     int       `json:"max_rounds"`
-	EnableRewrite bool      `json:"enable_rewrite"`
-	Status        int8      `json:"status"`
-	MessageCount  int       `json:"message_count"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            string     `json:"id"`
+	TenantID      int64      `json:"tenant_id"`
+	UserID        int64      `json:"user_id"`
+	Title         string     `json:"title"`
+	Description   string     `json:"description"`
+	KBID          string     `json:"kb_id"`
+	MaxRounds     int        `json:"max_rounds"`
+	EnableRewrite bool       `json:"enable_rewrite"`
+	Status        int8       `json:"status"`
+	MessageCount  int        `json:"message_count"`
+	RAGConfig     *RAGConfig `json:"rag_config,omitempty"` // RAG 配置
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // ListSessionsRequest 查询会话列表请求

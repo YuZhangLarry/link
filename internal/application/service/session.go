@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"link/internal/types"
@@ -203,7 +204,7 @@ func (s *SessionService) ActivateSession(ctx context.Context, id string) error {
 
 // toSessionResponse 转换为会话响应格式
 func (s *SessionService) toSessionResponse(session *types.SessionEntity) *types.SessionResponse {
-	return &types.SessionResponse{
+	resp := &types.SessionResponse{
 		ID:            session.ID,
 		TenantID:      session.TenantID,
 		UserID:        session.UserID,
@@ -217,4 +218,14 @@ func (s *SessionService) toSessionResponse(session *types.SessionEntity) *types.
 		CreatedAt:     session.CreatedAt,
 		UpdatedAt:     session.UpdatedAt,
 	}
+
+	// 解析 RAGConfig JSON 字段
+	if session.RAGConfig != "" {
+		var ragConfig types.RAGConfig
+		if err := json.Unmarshal([]byte(session.RAGConfig), &ragConfig); err == nil {
+			resp.RAGConfig = &ragConfig
+		}
+	}
+
+	return resp
 }

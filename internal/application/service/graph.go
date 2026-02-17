@@ -63,6 +63,16 @@ func NewGraphServiceWithChunks(graphRepo interfaces.Neo4jGraphRepository, graphQ
 	}
 }
 
+// GetNeo4jRepo 获取 Neo4j 图谱仓储
+func (s *GraphService) GetNeo4jRepo() interfaces.Neo4jGraphRepository {
+	return s.graphRepo
+}
+
+// GetGraphQueryRepo 获取图谱查询仓储
+func (s *GraphService) GetGraphQueryRepo() interfaces.GraphQueryRepository {
+	return s.graphQueryRepo
+}
+
 // ========================================
 // 图谱提取相关类型
 // ========================================
@@ -125,12 +135,6 @@ func (s *GraphService) ExtractGraphFromChunksWithMode(
 	if len(inputs) == 0 {
 		return &types.GraphData{}, nil
 	}
-
-	// 清空缓存
-	s.graphCache.mutex.Lock()
-	s.graphCache.nodes = make(map[string]*types.GraphNode)
-	s.graphCache.relations = make(map[string]*types.GraphRelation)
-	s.graphCache.mutex.Unlock()
 
 	log.Printf("[GraphService] Starting concurrent extraction for %d chunks, mode=%s", len(inputs), mode)
 
@@ -412,7 +416,7 @@ func (s *GraphService) extractRelations(
 }
 
 // mergeExtractedGraphs 合并多个提取的图谱数据
-// 在构建实体时就加锁，保证并发安全
+// 使用局部变量合并，只在最后更新缓存时加锁，减少锁持有时间
 func (s *GraphService) mergeExtractedGraphs(
 	ctx context.Context,
 	dataList []*ExtractedGraphData,
@@ -421,19 +425,16 @@ func (s *GraphService) mergeExtractedGraphs(
 		return &types.GraphData{}, nil
 	}
 
-	// 获取锁（在构建实体时加锁）
-	s.graphCache.mutex.Lock()
-	defer s.graphCache.mutex.Unlock()
+	// 使用局部变量进行合并（无锁）
+	localNodes := make(map[string]*types.GraphNode, 64)
+	localRelations := make(map[string]*types.GraphRelation, 128)
 
-	// 用于统计 PMI 计算
 	totalChunks := len(dataList)
-	entityChunkCount := make(map[string]int)  // 每个实体出现的文档块数
-	coOccurrenceCount := make(map[string]int) // 每对实体共同出现的文档块数
 
-	// 第一阶段：合并节点（已经在锁保护下）
+	// 第一阶段：合并节点到局部变量（无锁）
 	for _, data := range dataList {
 		for _, node := range data.Nodes {
-			if existingNode, exists := s.graphCache.nodes[node.Name]; exists {
+			if existingNode, exists := localNodes[node.Name]; exists {
 				// 合并 chunks（去重）
 				for _, chunk := range node.Chunks {
 					if !slices.Contains(existingNode.Chunks, chunk) {
@@ -447,17 +448,17 @@ func (s *GraphService) mergeExtractedGraphs(
 					}
 				}
 			} else {
-				s.graphCache.nodes[node.Name] = node
+				localNodes[node.Name] = node
 			}
 		}
 	}
 
-	// 第二阶段：合并关系
+	// 第二阶段：合并关系到局部变量（无锁）
 	for _, data := range dataList {
 		for _, rel := range data.Relations {
 			key := fmt.Sprintf("%s#%s", rel.Source, rel.Target)
 
-			if existingRel, exists := s.graphCache.relations[key]; exists {
+			if existingRel, exists := localRelations[key]; exists {
 				// 合并 chunk_ids（去重）
 				for _, chunkID := range rel.ChunkIDs {
 					if !slices.Contains(existingRel.ChunkIDs, chunkID) {
@@ -471,27 +472,29 @@ func (s *GraphService) mergeExtractedGraphs(
 					existingRel.Strength = rel.Strength
 				}
 			} else {
-				s.graphCache.relations[key] = rel
+				localRelations[key] = rel
 			}
 		}
 	}
 
+	// 第三阶段：计算 PMI 和 Weight（无锁，使用局部变量）
+	entityChunkCount := make(map[string]int, len(localNodes))
+	coOccurrenceCount := make(map[string]int, len(localRelations))
+
 	// 统计实体出现的文档块数
-	for _, node := range s.graphCache.nodes {
+	for _, node := range localNodes {
 		entityChunkCount[node.Name] = len(node.Chunks)
 	}
 
 	// 统计实体对共同出现的文档块数
-	for _, rel := range s.graphCache.relations {
-		// 找到共同出现的文档块
-		sourceChunks := s.graphCache.nodes[rel.Source].Chunks
-		targetChunks := s.graphCache.nodes[rel.Target].Chunks
-		commonChunks := intersection(sourceChunks, targetChunks)
-		coOccurrenceCount[fmt.Sprintf("%s#%s", rel.Source, rel.Target)] = len(commonChunks)
+	for _, rel := range localRelations {
+		sourceChunks := localNodes[rel.Source].Chunks
+		targetChunks := localNodes[rel.Target].Chunks
+		coOccurrenceCount[fmt.Sprintf("%s#%s", rel.Source, rel.Target)] = len(intersection(sourceChunks, targetChunks))
 	}
 
-	// 第三阶段：计算 PMI 和 Weight（在关系去重后串行执行）
-	for _, rel := range s.graphCache.relations {
+	// 计算每个关系的 PMI、Weight 和 CombinedDegree
+	for _, rel := range localRelations {
 		key := fmt.Sprintf("%s#%s", rel.Source, rel.Target)
 
 		// 计算概率
@@ -519,7 +522,7 @@ func (s *GraphService) mergeExtractedGraphs(
 		// 计算 CombinedDegree
 		sourceDegree := 0
 		targetDegree := 0
-		for _, r := range s.graphCache.relations {
+		for _, r := range localRelations {
 			if r.Source == rel.Source || r.Target == rel.Source {
 				sourceDegree++
 			}
@@ -533,19 +536,25 @@ func (s *GraphService) mergeExtractedGraphs(
 			rel.Source, rel.Target, pmi, rel.Weight, rel.CombinedDegree)
 	}
 
-	// 构建最终结果
+	// 第四阶段：构建结果并更新缓存（仅在此时加锁）
 	result := &types.GraphData{
-		Node:     make([]*types.GraphNode, 0, len(s.graphCache.nodes)),
-		Relation: make([]*types.GraphRelation, 0, len(s.graphCache.relations)),
+		Node:     make([]*types.GraphNode, 0, len(localNodes)),
+		Relation: make([]*types.GraphRelation, 0, len(localRelations)),
 	}
 
-	for _, node := range s.graphCache.nodes {
+	for _, node := range localNodes {
 		result.Node = append(result.Node, node)
 	}
 
-	for _, rel := range s.graphCache.relations {
+	for _, rel := range localRelations {
 		result.Relation = append(result.Relation, rel)
 	}
+
+	// 更新缓存（加锁，但时间很短）
+	s.graphCache.mutex.Lock()
+	s.graphCache.nodes = localNodes
+	s.graphCache.relations = localRelations
+	s.graphCache.mutex.Unlock()
 
 	return result, nil
 }

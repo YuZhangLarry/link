@@ -225,11 +225,17 @@ type RetrievalSettingRepository interface {
 	// FindByID 根据ID查找检索设置
 	FindByID(ctx context.Context, id int64) (*types.RetrievalSetting, error)
 
+	// FindBySessionID 根据会话ID查找检索设置
+	FindBySessionID(ctx context.Context, sessionID string) (*types.RetrievalSetting, error)
+
 	// Update 更新检索设置
 	Update(ctx context.Context, setting *types.RetrievalSetting) error
 
 	// Delete 删除检索设置
 	Delete(ctx context.Context, kbID string) error
+
+	// UpsertBySessionID 根据会话ID创建或更新检索设置
+	UpsertBySessionID(ctx context.Context, sessionID string, tenantID int64, ragConfig *types.RAGConfig) error
 
 	// UpdateVectorConfig 更新向量检索配置
 	UpdateVectorConfig(ctx context.Context, kbID string, topK int, threshold float64, modelID string) error

@@ -76,6 +76,7 @@ func (r *sessionRepository) Create(ctx context.Context, userID int64, req *types
 		SummaryParameters: "{}", // 默认空JSON
 		AgentConfig:       "{}", // 默认空JSON
 		ContextConfig:     "{}", // 默认空JSON
+		RAGConfig:         "",   // 默认空字符串
 	}
 
 	// 处理 KBID (可空)
@@ -85,6 +86,8 @@ func (r *sessionRepository) Create(ctx context.Context, userID int64, req *types
 	if req.RerankModelID != nil {
 		session.RerankModelID = *req.RerankModelID
 	}
+
+	// 注意：RAGConfig 现在存储在 retrieval_settings 表中，不在这里处理
 
 	if err := r.db.WithContext(ctx).Create(session).Error; err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
@@ -209,6 +212,7 @@ func (r *sessionRepository) Update(ctx context.Context, id string, req *types.Up
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
+	// 注意：RAGConfig 现在存储在 retrieval_settings 表中，不在这里处理
 
 	if err := r.db.WithContext(ctx).Model(&session).Updates(updates).Error; err != nil {
 		return fmt.Errorf("更新会话失败: %w", err)

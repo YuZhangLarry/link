@@ -106,31 +106,6 @@
               <div class="form-tip">构建BM25关键词索引，支持关键词检索</div>
             </el-form-item>
 
-            <el-divider content-position="left">图片处理</el-divider>
-
-            <el-form-item label="图片处理方式">
-              <el-radio-group v-model="formData.image_processing_mode">
-                <el-radio label="none">不处理</el-radio>
-                <el-radio label="ocr">OCR文字提取</el-radio>
-                <el-radio label="vlm">视觉理解</el-radio>
-              </el-radio-group>
-              <div class="form-tip">
-                OCR：提取图片中的文字 | VLM：使用视觉模型理解图片内容
-              </div>
-            </el-form-item>
-
-            <el-divider content-position="left">实体抽取</el-divider>
-
-            <el-form-item label="抽取方式">
-              <el-radio-group v-model="formData.extract_mode">
-                <el-radio label="none">不抽取</el-radio>
-                <el-radio label="basic">基础抽取</el-radio>
-                <el-radio label="advanced">高级抽取</el-radio>
-              </el-radio-group>
-              <div class="form-tip">
-                基础：抽取常见实体类型 | 高级：使用LLM进行智能抽取
-              </div>
-            </el-form-item>
           </el-form>
         </el-tab-pane>
 
@@ -206,9 +181,7 @@ const formData = reactive<CreateKnowledgeBaseRequest>({
   chunk_size: 512,
   chunk_overlap: 100,
   graph_enabled: false,
-  bm25_enabled: false,
-  image_processing_mode: 'none',
-  extract_mode: 'none'
+  bm25_enabled: false
 })
 
 const formRules = {
@@ -281,9 +254,7 @@ function resetForm() {
     chunk_size: 512,
     chunk_overlap: 100,
     graph_enabled: false,
-    bm25_enabled: false,
-    image_processing_mode: 'none',
-    extract_mode: 'none'
+    bm25_enabled: false
   })
 }
 
@@ -303,9 +274,7 @@ async function saveKnowledgeBase() {
       chunk_size: formData.chunk_size,
       chunk_overlap: formData.chunk_overlap,
       graph_enabled: formData.graph_enabled,
-      bm25_enabled: formData.bm25_enabled,
-      image_processing_mode: formData.image_processing_mode,
-      extract_mode: formData.extract_mode
+      bm25_enabled: formData.bm25_enabled
     }
 
     if (editingId.value) {

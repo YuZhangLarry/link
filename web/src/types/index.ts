@@ -61,6 +61,7 @@ export interface ChatRequest {
   model?: string
   temperature?: number
   max_tokens?: number
+  rag_config?: RAGConfig
 }
 
 export interface ChatResponse {
@@ -68,6 +69,7 @@ export interface ChatResponse {
   role: string
   token_count: number
   tool_calls?: ToolCall[]
+  rag_context?: RAGContext
 }
 
 export interface ToolCall {
@@ -80,12 +82,56 @@ export interface ToolCall {
 }
 
 export interface StreamChatEvent {
-  event: 'content' | 'end' | 'error'
+  event: 'content' | 'end' | 'error' | 'session' | 'rag_context'
   content: string
   message_id?: string
   token_count?: number
   tool_calls?: ToolCall[]
   error?: string
+  session_id?: string
+  rag_context?: RAGContext
+}
+
+// ============ RAG 相关 ============
+export interface RAGConfig {
+  enabled: boolean
+  kb_id: string
+  retrieval_modes: string[]  // 检索模式数组：'vector'(必选), 'bm25', 'graph'
+  vector_top_k: number
+  keyword_top_k: number
+  graph_top_k: number
+  similarity_threshold: number
+  alpha: number
+}
+
+export interface RAGContext {
+  query: string
+  final_query: string
+  contexts: string[]
+  contexts_with_score: Array<{
+    content: string
+    score: number
+    chunk_id: string
+    source: string
+  }>
+  source_types: string[]
+  retrieved_count: number
+  stages: Record<string, {
+    success: boolean
+    input_count?: number
+    output_count?: number
+  }>
+}
+
+export const defaultRAGConfig: RAGConfig = {
+  enabled: false,
+  kb_id: '',
+  retrieval_modes: ['vector'],  // 默认仅向量检索
+  vector_top_k: 15,
+  keyword_top_k: 15,
+  graph_top_k: 10,
+  similarity_threshold: 0,
+  alpha: 0.6
 }
 
 // ============ 会话相关 ============
@@ -95,6 +141,7 @@ export interface Session {
   description?: string
   status: number
   max_rounds: number
+  rag_config?: RAGConfig
   created_at: string
   updated_at: string
 }
@@ -103,12 +150,14 @@ export interface CreateSessionRequest {
   title?: string
   description?: string
   max_rounds?: number
+  rag_config?: RAGConfig
 }
 
 export interface UpdateSessionRequest {
   title?: string
   description?: string
   status?: number
+  rag_config?: RAGConfig
 }
 
 export interface SessionDetail {
@@ -117,7 +166,7 @@ export interface SessionDetail {
 }
 
 export interface SessionListResponse {
-  items: Session[]
+  sessions: Session[]
   total: number
   page: number
   size: number
@@ -179,8 +228,6 @@ export interface CreateKnowledgeBaseRequest {
   chunk_overlap?: number
   graph_enabled?: boolean
   bm25_enabled?: boolean
-  image_processing_mode?: string  // 'none' | 'ocr' | 'vlm' | 'all'
-  extract_mode?: string  // 'none' | 'rule' | 'llm'
 }
 
 export interface UpdateKnowledgeBaseRequest {
@@ -194,8 +241,6 @@ export interface UpdateKnowledgeBaseRequest {
   chunk_overlap?: number
   graph_enabled?: boolean
   bm25_enabled?: boolean
-  image_processing_mode?: string  // 'none' | 'ocr' | 'vlm' | 'all'
-  extract_mode?: string  // 'none' | 'rule' | 'llm'
 }
 
 export interface KnowledgeBaseStats {
@@ -271,8 +316,6 @@ export interface SearchResult {
   knowledge_title: string
   content: string
   score: number
-  metadata?: Record<string, any>
-  tags?: string[]
 }
 
 export interface SearchResponse {

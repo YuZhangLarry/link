@@ -13,6 +13,7 @@ import (
 	"link/internal/application/repository"
 	"link/internal/application/repository/retriever/neo4j"
 	repoService "link/internal/application/service"
+	"link/internal/application/service/rag"
 	"link/internal/config"
 	"link/internal/container"
 	"link/internal/handler"
@@ -82,7 +83,7 @@ func main() {
 	kbBaseService := repoService.NewKnowledgeBaseService(kbBaseRepo, kbSettingRepo, knowledgeRepo, chunkRepo, gormDB.DB)
 	knowledgeService := repoService.NewKnowledgeService(knowledgeRepo, chunkRepo, kbSettingRepo, gormDB.DB)
 
-	// 初始化 Graph Service（使用 neo4j retriever 的仓储，确保写入和查询一致）
+	// 初始化 Graph Service（使用 neo4j rag 的仓储，确保写入和查询一致）
 	var graphService *repoService.GraphService
 	if cfg.Neo4j != nil && cfg.Neo4j.URI != "" {
 		ctx := context.Background()
@@ -99,13 +100,13 @@ func main() {
 				log.Println("🔌 关闭 Neo4j driver...")
 				driver.Close(ctx)
 			}()
-			// 使用 neo4j retriever 的仓储实现（Neo4j 操作）
+			// 使用 neo4j rag 的仓储实现（Neo4j 操作）
 			graphRepo := neo4j.NewNeo4jRepository(driver)
 			// 创建图谱查询仓储（与知识库的关联查询）
 			graphQueryRepo := repository.NewGraphQueryRepository(gormDB.DB, true)
 			// 使用包含chunk仓储的构造函数
 			graphService = repoService.NewGraphServiceWithChunks(graphRepo, graphQueryRepo, chunkRepo)
-			log.Println("✅ Graph Service 初始化成功 (使用 neo4j retriever 仓储 + 图谱查询仓储 + chunk仓储)")
+			log.Println("✅ Graph Service 初始化成功 (使用 neo4j rag 仓储 + 图谱查询仓储 + chunk仓储)")
 		}
 	}
 
@@ -167,6 +168,46 @@ func main() {
 		log.Println("✅ Knowledge Handler 初始化成功")
 	} else {
 		log.Println("⚠️  Knowledge Handler 未完全初始化（缺少 GraphService/Embedder/Milvus）")
+	}
+
+	// 初始化 RAG Chat Service
+	var ragChatService *rag.RAGChatService
+	var ragChatHandler *handler.RAGChatHandler
+	if graphService != nil && embedder != nil {
+		var err error
+		// 创建检索设置仓储
+		retrievalSettingRepo := repository.NewRetrievalSettingRepository(gormDB.DB, true)
+
+		// 创建 RAG 聊天服务
+		ragChatService, err = rag.NewRAGChatService(
+			cfg.Chat,
+			kbSettingRepo,
+			chunkRepo,
+			embedder,
+			container.MilvusClient,
+			graphService.GetNeo4jRepo(),
+			graphService.GetGraphQueryRepo(),
+			retrievalSettingRepo,
+			chatService,
+		)
+		if err != nil {
+			log.Printf("⚠️  RAG Chat Service 初始化失败: %v", err)
+		} else {
+			log.Println("✅ RAG Chat Service 初始化成功")
+		}
+
+		// 初始化 RAG Chat Handler
+		if ragChatService != nil {
+			ragChatHandler = handler.NewRAGChatHandler(
+				ragChatService,
+				sessionService,
+				sessionRepo,
+				messageService,
+			)
+			log.Println("✅ RAG Chat Handler 初始化成功")
+		}
+	} else {
+		log.Println("⚠️  RAG Chat Service 未初始化（缺少 GraphService/Embedder）")
 	}
 
 	// 设置 Gin 运行模式
@@ -248,6 +289,17 @@ func main() {
 		{
 			chatAuth.POST("", chatHandler.ChatWithAuth)
 			chatAuth.POST("/stream", chatHandler.ChatStreamWithAuth)
+		}
+
+		// RAG 聊天路由（需要认证）
+		if ragChatHandler != nil {
+			chatRAG := api.Group("/chat/rag")
+			chatRAG.Use(authMiddleware, contextToRequest)
+			{
+				chatRAG.POST("", ragChatHandler.ChatWithRAG)              // 非 RAG 流式聊天
+				chatRAG.POST("/stream", ragChatHandler.ChatStreamWithRAG) // RAG 流式聊天
+			}
+			log.Println("✅ RAG 聊天路由已注册")
 		}
 
 		// 消息路由（需要认证）

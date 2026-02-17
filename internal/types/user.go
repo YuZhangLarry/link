@@ -4,17 +4,17 @@ import "time"
 
 // User 用户实体
 type User struct {
-	ID                int64      `json:"id" gorm:"primaryKey;autoIncrement"`
-	TenantID          int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_id"` // 租户ID
-	Username          string     `json:"username" gorm:"type:varchar(50);not null;index:idx_tenant_username,priority:1"`
-	Email             string     `json:"email" gorm:"type:varchar(100);not null;index:idx_tenant_email,priority:1"`
-	PasswordHash      string     `json:"-" gorm:"type:varchar(255);not null"`
-	Avatar            string     `json:"avatar" gorm:"type:varchar(500)"`
-	Status            int8       `json:"status" gorm:"type:tinyint;default:1;index:idx_status"` // 0=禁用, 1=正常
-	CreatedAt         time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt         time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
-	LastLoginAt       *time.Time `json:"last_login_at,omitempty" gorm:"index"`
-	DeletedAt         *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	ID           int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantID     int64      `json:"tenant_id" gorm:"not null;index:idx_tenant_id"` // 租户ID
+	Username     string     `json:"username" gorm:"type:varchar(50);not null;index:idx_tenant_username,priority:1"`
+	Email        string     `json:"email" gorm:"type:varchar(100);not null;index:idx_tenant_email,priority:1"`
+	PasswordHash string     `json:"-" gorm:"type:varchar(255);not null"`
+	Avatar       string     `json:"avatar" gorm:"type:varchar(500)"`
+	Status       int8       `json:"status" gorm:"type:tinyint;default:1;index:idx_status"` // 0=禁用, 1=正常
+	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty" gorm:"index"`
+	DeletedAt    *time.Time `json:"deleted_at,omitempty" gorm:"index"`
 }
 
 // TableName 指定表名
@@ -44,11 +44,11 @@ type RefreshTokenRequest struct {
 
 // AuthResponse 认证响应
 type AuthResponse struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token"`
-	ExpiresAt    int64     `json:"expires_at"`
-	User         UserInfo  `json:"user"`
-	TenantID     int64     `json:"tenant_id,omitempty"`
+	AccessToken  string   `json:"access_token"`
+	RefreshToken string   `json:"refresh_token"`
+	ExpiresAt    int64    `json:"expires_at"`
+	User         UserInfo `json:"user"`
+	TenantID     int64    `json:"tenant_id,omitempty"`
 }
 
 // UserInfo 用户信息（不含敏感信息）
@@ -78,4 +78,40 @@ type RefreshTokenEntity struct {
 	TokenHash string    `json:"-" gorm:"type:varchar(64);not null;uniqueIndex"`
 	ExpiresAt time.Time `json:"expires_at" gorm:"not null"`
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// UserPreference 用户偏好设置
+type UserPreference struct {
+	ID                  int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserID              int64     `json:"user_id" gorm:"not null;uniqueIndex"`
+	Language            string    `json:"language" gorm:"type:varchar(10);default:'zh-CN'"`
+	Theme               string    `json:"theme" gorm:"type:varchar(20);default:'light'"`
+	NotificationEnabled bool      `json:"notification_enabled" gorm:"default:true"`
+	PreferenceJSON      string    `json:"preference_json" gorm:"type:json"` // JSON 字符串
+	CreatedAt           time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt           time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+// TableName 指定表名
+func (UserPreference) TableName() string {
+	return "user_preferences"
+}
+
+// APIKey API密钥
+type APIKey struct {
+	ID         int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	UserID     int64      `json:"user_id" gorm:"not null;index:idx_user_id"`
+	Name       string     `json:"name" gorm:"type:varchar(255);not null"`
+	KeyHash    string     `json:"-" gorm:"type:varchar(255);not null;uniqueIndex"`
+	KeyPrefix  string     `json:"key_prefix" gorm:"type:varchar(20);not null"`
+	Scopes     string     `json:"scopes" gorm:"type:json"` // JSON
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	ExpiresAt  *time.Time `json:"expires_at,omitempty"`
+	Status     int8       `json:"status" gorm:"type:tinyint;default:1"` // 0=禁用, 1=启用
+	CreatedAt  time.Time  `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// TableName 指定表名
+func (APIKey) TableName() string {
+	return "api_keys"
 }

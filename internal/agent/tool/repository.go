@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"link/internal/models"
+	"link/internal/types"
 )
 
 // Repository 工具执行记录仓库
@@ -120,7 +120,7 @@ func (r *Repository) SaveExecutionWithParams(
 }
 
 // GetExecutionsByMessage 获取消息的所有工具执行记录
-func (r *Repository) GetExecutionsByMessage(ctx context.Context, messageID int64) ([]*models.ToolExecution, error) {
+func (r *Repository) GetExecutionsByMessage(ctx context.Context, messageID int64) ([]*types.ToolExecution, error) {
 	query := `
 		SELECT id, message_id, tool_id, input_params, output_data,
 		       status, duration_ms, error_message, created_at
@@ -135,9 +135,9 @@ func (r *Repository) GetExecutionsByMessage(ctx context.Context, messageID int64
 	}
 	defer rows.Close()
 
-	executions := make([]*models.ToolExecution, 0)
+	executions := make([]*types.ToolExecution, 0)
 	for rows.Next() {
-		var exec models.ToolExecution
+		var exec types.ToolExecution
 		var inputParams, outputData, errorMessage sql.NullString
 
 		err := rows.Scan(
@@ -251,15 +251,15 @@ func (r *Repository) GetToolStats(ctx context.Context, toolName string, days int
 
 // ToolStats 工具统计信息
 type ToolStats struct {
-	TotalCalls     int `json:"total_calls"`
-	SuccessCalls   int `json:"success_calls"`
-	FailedCalls    int `json:"failed_calls"`
-	AvgDurationMs  int `json:"avg_duration_ms"`
-	MaxDurationMs  int `json:"max_duration_ms"`
+	TotalCalls    int `json:"total_calls"`
+	SuccessCalls  int `json:"success_calls"`
+	FailedCalls   int `json:"failed_calls"`
+	AvgDurationMs int `json:"avg_duration_ms"`
+	MaxDurationMs int `json:"max_duration_ms"`
 }
 
 // ListRecentExecutions 列出最近的工具执行记录
-func (r *Repository) ListRecentExecutions(ctx context.Context, limit int) ([]*models.ToolExecution, error) {
+func (r *Repository) ListRecentExecutions(ctx context.Context, limit int) ([]*types.ToolExecution, error) {
 	query := `
 		SELECT te.id, te.message_id, te.tool_id, t.name as tool_name,
 		       te.input_params, te.output_data, te.status, te.duration_ms,
@@ -276,9 +276,9 @@ func (r *Repository) ListRecentExecutions(ctx context.Context, limit int) ([]*mo
 	}
 	defer rows.Close()
 
-	executions := make([]*models.ToolExecution, 0)
+	executions := make([]*types.ToolExecution, 0)
 	for rows.Next() {
-		var exec models.ToolExecution
+		var exec types.ToolExecution
 		var inputParams, outputData, errorMessage sql.NullString
 		var toolName sql.NullString
 

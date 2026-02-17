@@ -179,8 +179,8 @@ async function loadSessions() {
     console.log('loadSessions res:', res)
     console.log('loadSessions res.data:', res.data)
     if (res.data) {
-      // 后端返回的是 items
-      sessions.value = res.data.items || []
+      // 后端返回的是 sessions
+      sessions.value = res.data.sessions || []
       console.log('loadSessions sessions:', sessions.value)
       if (sessions.value.length > 0 && !currentSessionId.value) {
         currentSessionId.value = sessions.value[0].id

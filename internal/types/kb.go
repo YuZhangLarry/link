@@ -452,11 +452,11 @@ type GraphRelation struct {
 // ========================================
 
 // RetrievalSetting 检索设置实体
-// 对应 retrieval_settings 表 (注意：表使用 session_id 而非 kb_id)
+// 对应 retrieval_settings 表
 type RetrievalSetting struct {
-	ID        int64  `json:"id" gorm:"primaryKey;autoIncrement"`
-	TenantID  int64  `json:"tenant_id" gorm:"not null;index:idx_kb_tenant"`
-	SessionID *int64 `json:"session_id,omitempty" gorm:"default:NULL"` // 对话ID（bigint）
+	ID        int64   `json:"id" gorm:"primaryKey;autoIncrement"`
+	TenantID  int64   `json:"tenant_id" gorm:"not null;index:idx_kb_tenant"`
+	SessionID *string `json:"session_id,omitempty" gorm:"type:varchar(36);index:idx_session_id"` // 会话UUID（关联sessions.id）
 
 	// 向量检索配置
 	VectorTopK      *int     `json:"vector_top_k,omitempty" gorm:"default:5"`
@@ -473,7 +473,7 @@ type RetrievalSetting struct {
 	GraphMinStrength *float64 `json:"graph_min_strength,omitempty" gorm:"default:1"`
 
 	// 混合检索配置
-	HybridAlpha         *number `json:"hybrid_alpha,omitempty" gorm:"default:0.5"` // 向量权重(0-1)
+	HybridAlpha         *Number `json:"hybrid_alpha,omitempty" gorm:"default:0.5"` // 向量权重(0-1)
 	HybridRerankEnabled *bool   `json:"hybrid_rerank_enabled,omitempty" gorm:"type:tinyint(1);default:0"`
 
 	// 网络搜索配置
@@ -490,8 +490,8 @@ type RetrievalSetting struct {
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
-// number 用于表示数值类型（兼容 float64 和 int）
-type number float64
+// Number 用于表示数值类型（兼容 float64 和 int）
+type Number float64
 
 func (RetrievalSetting) TableName() string {
 	return "retrieval_settings"

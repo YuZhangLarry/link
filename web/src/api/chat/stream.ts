@@ -77,7 +77,12 @@ export async function* streamChatWithAuth(data: ChatRequest): AsyncGenerator<Str
     headers['X-Tenant-ID'] = currentTenant.id.toString()
   }
 
-  const response = await fetch('/api/v1/chat/auth/stream', {
+  // 根据是否启用 RAG 选择不同的端点
+  const url = data.rag_config?.enabled
+    ? '/api/v1/chat/rag/stream'
+    : '/api/v1/chat/auth/stream'
+
+  const response = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(data)

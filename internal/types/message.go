@@ -26,13 +26,13 @@ func (MessageEntity) TableName() string {
 
 // CreateMessageRequest 创建消息请求
 type CreateMessageRequest struct {
-	SessionID           string  `json:"session_id" binding:"required"`
-	Role                string  `json:"role" binding:"required,oneof=system user assistant tool"`
-	Content             string  `json:"content" binding:"required"`
-	KnowledgeReferences string  `json:"knowledge_references"`
-	AgentSteps          string  `json:"agent_steps"`
-	ToolCalls           string  `json:"tool_calls"`
-	TokenCount          int     `json:"token_count"`
+	SessionID           string `json:"session_id" binding:"required"`
+	Role                string `json:"role" binding:"required,oneof=system user assistant tool"`
+	Content             string `json:"content" binding:"required"`
+	KnowledgeReferences string `json:"knowledge_references"`
+	AgentSteps          string `json:"agent_steps"`
+	ToolCalls           string `json:"tool_calls"`
+	TokenCount          int    `json:"token_count"`
 }
 
 // UpdateMessageRequest 更新消息请求
@@ -70,7 +70,22 @@ type ListMessagesRequest struct {
 // MessageListResponse 消息列表响应
 type MessageListResponse struct {
 	Messages []*MessageResponse `json:"messages"`
-	Total    int64             `json:"total"`
-	Page     int               `json:"page"`
-	Size     int               `json:"size"`
+	Total    int64              `json:"total"`
+	Page     int                `json:"page"`
+	Size     int                `json:"size"`
+}
+
+// MessageFeedback 消息反馈
+type MessageFeedback struct {
+	ID        int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	MessageID string    `json:"message_id" gorm:"not null;size:36;index:idx_message_id"`
+	UserID    int64     `json:"user_id" gorm:"not null;index:idx_user_id"`
+	Rating    int       `json:"rating" gorm:"not null"` // 1-5星
+	Comment   string    `json:"comment" gorm:"type:text"`
+	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+}
+
+// TableName 指定表名
+func (MessageFeedback) TableName() string {
+	return "message_feedbacks"
 }
