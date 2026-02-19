@@ -8,17 +8,22 @@ import (
 
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	"link/internal/application/chunker"
 	"link/internal/application/repository"
 	"link/internal/application/repository/retriever/neo4j"
 	repoService "link/internal/application/service"
+	agentservice "link/internal/application/service/agent"
 	"link/internal/application/service/rag"
 	"link/internal/config"
 	"link/internal/container"
 	"link/internal/handler"
 	"link/internal/middleware"
+	"link/internal/models/chat"
 	embeddingModel "link/internal/models/embedding"
+	"link/internal/types"
 )
 
 func main() {
@@ -71,17 +76,37 @@ func main() {
 	chunkRepo := repository.NewChunkRepository(gormDB.DB, true)
 	kbSettingRepo := repository.NewKBSettingRepository(gormDB.DB, true)
 	modelRepo := repository.NewModelRepository(gormDB.DB)
+	retrievalSettingRepo := repository.NewRetrievalSettingRepository(gormDB.DB, true)
+
+	// 初始化测评Repository
+	evalRepo := repository.NewEvaluationRepository(gormDB.DB)
+	datasetRepo := repository.NewDatasetRepository(gormDB.DB)
+
+	// 初始化默认模型到数据库
+	initDefaultModels(gormDB.DB, cfg)
 
 	// 初始化 Service
 	tenantService := repoService.NewTenantService(tenantRepo)
 	userService := repoService.NewUserService(userRepo, refreshTokenRepo, tenantRepo, cfg.JWT)
 	chatService := repoService.NewChatService(cfg.Chat)
 	messageService := repoService.NewMessageService(messageRepo)
-	sessionService := repoService.NewSessionService(sessionRepo, messageRepo)
+	sessionService := repoService.NewSessionService(sessionRepo, messageRepo, retrievalSettingRepo)
 
 	// 初始化知识库Service
 	kbBaseService := repoService.NewKnowledgeBaseService(kbBaseRepo, kbSettingRepo, knowledgeRepo, chunkRepo, gormDB.DB)
 	knowledgeService := repoService.NewKnowledgeService(knowledgeRepo, chunkRepo, kbSettingRepo, gormDB.DB)
+
+	// 初始化测评Service
+	evaluationService := repoService.NewEvaluationService(
+		evalRepo,
+		datasetRepo,
+		kbBaseRepo,
+		chunkRepo,
+		chatService,
+		cfg,
+	)
+	// 设置指标仓储
+	evaluationService.SetMetricsRepo(repository.NewEvaluationMetricsRepository(gormDB.DB))
 
 	// 初始化 Graph Service（使用 neo4j rag 的仓储，确保写入和查询一致）
 	var graphService *repoService.GraphService
@@ -141,6 +166,7 @@ func main() {
 	sessionHandler := handler.NewSessionHandler(sessionService)
 	kbBaseHandler := handler.NewKnowledgeBaseHandler(kbBaseService)
 	modelHandler := handler.NewModelHandler(modelRepo)
+	evaluationHandler := handler.NewEvaluationHandler(evaluationService)
 
 	// 初始化图谱Handler
 	var graphHandler *handler.GraphHandler
@@ -175,9 +201,6 @@ func main() {
 	var ragChatHandler *handler.RAGChatHandler
 	if graphService != nil && embedder != nil {
 		var err error
-		// 创建检索设置仓储
-		retrievalSettingRepo := repository.NewRetrievalSettingRepository(gormDB.DB, true)
-
 		// 创建 RAG 聊天服务
 		ragChatService, err = rag.NewRAGChatService(
 			cfg.Chat,
@@ -194,6 +217,17 @@ func main() {
 			log.Printf("⚠️  RAG Chat Service 初始化失败: %v", err)
 		} else {
 			log.Println("✅ RAG Chat Service 初始化成功")
+
+			// 初始化 Agent 的 RAG 工具（直接使用 Retriever 检索）
+			rag.InitAgentRAGTool(
+				kbSettingRepo,
+				chunkRepo,
+				embedder,
+				graphService.GetNeo4jRepo(),
+				graphService.GetGraphQueryRepo(),
+				1,
+			)
+			log.Println("✅ Agent RAG 工具初始化成功")
 		}
 
 		// 初始化 RAG Chat Handler
@@ -208,6 +242,67 @@ func main() {
 		}
 	} else {
 		log.Println("⚠️  RAG Chat Service 未初始化（缺少 GraphService/Embedder）")
+	}
+
+	// ========================================
+	// 初始化 Agent (多代理协作系统)
+	// ========================================
+	var agentHandler *handler.AgentHandler
+	toolChatModel, err := chat.NewToolCallingChatModel(context.Background(), &chat.ChatConfig{
+		Source:    cfg.Chat.Source,
+		BaseURL:   cfg.Chat.BaseURL,
+		ModelName: cfg.Chat.ModelName,
+		APIKey:    cfg.Chat.APIKey,
+		Provider:  cfg.Chat.Provider,
+	})
+	if err != nil {
+		log.Printf("⚠️  ToolCallingChatModel 初始化失败: %v", err)
+	} else {
+		log.Println("🤖 开始初始化多代理协作系统...")
+
+		// 创建多代理协调器（Planner + Retriever + Analyzer + Synthesizer + Critic）
+		multiAgentConfig := &agentservice.MultiAgentConfig{
+			CoordinatorModel: toolChatModel,
+			PlannerModel:     toolChatModel,
+			RetrieverModel:   toolChatModel,
+			AnalyzerModel:    toolChatModel,
+			SynthesizerModel: toolChatModel,
+			CriticModel:      toolChatModel,
+			MaxIterations:    20,
+		}
+
+		multiAgentOrchestrator, err := agentservice.NewMultiAgentOrchestrator(context.Background(), multiAgentConfig)
+		if err != nil {
+			log.Printf("⚠️  MultiAgent Orchestrator 初始化失败: %v，降级到简单 Agent")
+			// 降级：创建简单 DeepSearch Agent
+			deepSearchConfig := &agentservice.DeepSearchAgentConfig{
+				Name:          "DeepSearchAgent",
+				Description:   "深度搜索智能助手",
+				MaxIterations: 15,
+			}
+			deepSearchAgent, err := agentservice.NewDeepSearchAgent(context.Background(), toolChatModel, deepSearchConfig)
+			if err != nil {
+				log.Printf("⚠️  DeepSearch Agent 初始化失败: %v", err)
+			} else {
+				// 使用 simpleAgent 的 Eino Agent
+				agentHandler = handler.NewAgentHandler(deepSearchAgent, sessionService, messageService)
+				log.Println("✅ DeepSearch Agent (降级模式) 初始化成功")
+			}
+		} else {
+			// 使用多代理协调器创建 handler
+			// MultiAgentOrchestrator 实现了 EinoAgentProvider 接口
+			agentHandler = handler.NewAgentHandler(
+				multiAgentOrchestrator,
+				sessionService,
+				messageService,
+			)
+			log.Println("✅ MultiAgent Orchestrator 初始化成功")
+			log.Println("   - Planner Agent: 研究规划")
+			log.Println("   - Retriever Agent: 信息检索 (rag_query, web_search)")
+			log.Println("   - Analyzer Agent: 深度分析")
+			log.Println("   - Synthesizer Agent: 报告合成")
+			log.Println("   - Critic Agent: 质量评审")
+		}
 	}
 
 	// 设置 Gin 运行模式
@@ -300,6 +395,18 @@ func main() {
 				chatRAG.POST("/stream", ragChatHandler.ChatStreamWithRAG) // RAG 流式聊天
 			}
 			log.Println("✅ RAG 聊天路由已注册")
+		}
+
+		// Agent 路由（DeepSearch 智能搜索）
+		if agentHandler != nil {
+			agentGroup := api.Group("/agent")
+			agentGroup.Use(authMiddleware, contextToRequest)
+			{
+				agentGroup.POST("/chat", agentHandler.Chat)              // 智能搜索
+				agentGroup.POST("/chat/stream", agentHandler.ChatStream) // 流式聊天（实时思考过程）
+				agentGroup.GET("/tools", agentHandler.ListTools)         // 列出可用工具
+			}
+			log.Println("✅ DeepSearch Agent 路由已注册 (/api/agent/chat)")
 		}
 
 		// 消息路由（需要认证）
@@ -408,6 +515,33 @@ func main() {
 		api.POST("/knowledge/search", authMiddleware, contextToRequest, handler.SearchKnowledge)
 
 		// ========================================
+		// 测评管理路由（需要认证）
+		// ========================================
+		evaluation := api.Group("/evaluation")
+		evaluation.Use(authMiddleware, contextToRequest)
+		{
+			evaluation.POST("", evaluationHandler.CreateEvaluation)
+			evaluation.GET("", evaluationHandler.GetEvaluation)
+		}
+
+		evaluations := api.Group("/evaluations")
+		evaluations.Use(authMiddleware, contextToRequest)
+		{
+			evaluations.GET("", evaluationHandler.ListEvaluations)
+			evaluations.GET("/:id", evaluationHandler.GetEvaluationByID)
+			evaluations.DELETE("/:id", evaluationHandler.DeleteEvaluation)
+		}
+
+		datasets := api.Group("/datasets")
+		datasets.Use(authMiddleware, contextToRequest)
+		{
+			datasets.POST("", evaluationHandler.CreateDataset)
+			datasets.GET("", evaluationHandler.ListDatasets)
+		}
+
+		log.Println("✅ 测评路由已注册")
+
+		// ========================================
 		// 权限管理路由（需要认证 + 租户ID）
 		// ========================================
 		permissionService := container.GetPermissionService()
@@ -468,5 +602,57 @@ func main() {
 
 	if err := r.Run(addr); err != nil {
 		log.Fatalf("❌ 服务器启动失败: %v", err)
+	}
+}
+
+// initDefaultModels 初始化默认模型到数据库
+func initDefaultModels(db *gorm.DB, cfg *config.Config) {
+	// 为默认租户(tenant_id=1)初始化模型
+	defaultTenantID := int64(1)
+
+	// 检查是否已存在模型
+	var count int64
+	db.Model(&types.Model{}).Where("tenant_id = ?", defaultTenantID).Count(&count)
+	if count > 0 {
+		log.Println("✅ 模型已存在，跳过初始化")
+		return
+	}
+
+	// 从env配置创建默认对话模型
+	chatModel := &types.Model{
+		ID:          uuid.New().String(),
+		TenantID:    defaultTenantID,
+		Name:        cfg.Chat.ModelName,
+		Type:        "chat",
+		Source:      string(cfg.Chat.Source),
+		Description: "默认对话模型（来自环境变量）",
+		Parameters:  fmt.Sprintf(`{"base_url":"%s","provider":"%s"}`, cfg.Chat.BaseURL, cfg.Chat.Provider),
+		IsDefault:   true,
+		Status:      "active",
+	}
+	if err := db.Create(chatModel).Error; err != nil {
+		log.Printf("⚠️  创建对话模型失败: %v", err)
+	} else {
+		log.Printf("✅ 默认对话模型已创建: %s", chatModel.Name)
+	}
+
+	// 从env配置创建默认embedding模型
+	if cfg.Embedding != nil {
+		embeddingModel := &types.Model{
+			ID:          uuid.New().String(),
+			TenantID:    defaultTenantID,
+			Name:        cfg.Embedding.Model,
+			Type:        "embedding",
+			Source:      "remote",
+			Description: "默认向量模型（来自环境变量）",
+			Parameters:  fmt.Sprintf(`{"base_url":"%s","provider":"%s"}`, cfg.Embedding.BaseURL, cfg.Embedding.Provider),
+			IsDefault:   true,
+			Status:      "active",
+		}
+		if err := db.Create(embeddingModel).Error; err != nil {
+			log.Printf("⚠️  创建embedding模型失败: %v", err)
+		} else {
+			log.Printf("✅ 默认向量模型已创建: %s", embeddingModel.Name)
+		}
 	}
 }

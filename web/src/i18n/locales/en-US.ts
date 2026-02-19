@@ -115,7 +115,9 @@ export default {
   menu: {
     chat: 'Chat',
     knowledge: 'Knowledge',
+    graph: 'Knowledge Graph',
     agent: 'Agent',
+    evaluation: 'Evaluation',
     settings: 'Settings'
   },
   tenant: {

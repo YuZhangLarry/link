@@ -2,39 +2,65 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
 
-// SessionService 会话服务实现 - 多租户版本
+// SessionService 会话服务实现（聚合 RAG 配置）
 type SessionService struct {
-	sessionRepo interfaces.SessionRepository
-	messageRepo interfaces.MessageRepository
+	sessionRepo   interfaces.SessionRepository
+	messageRepo   interfaces.MessageRepository
+	retrievalRepo interfaces.RetrievalSettingRepository
 }
 
 // NewSessionService 创建会话服务实例
-func NewSessionService(sessionRepo interfaces.SessionRepository, messageRepo interfaces.MessageRepository) interfaces.SessionService {
+func NewSessionService(
+	sessionRepo interfaces.SessionRepository,
+	messageRepo interfaces.MessageRepository,
+	retrievalRepo interfaces.RetrievalSettingRepository,
+) interfaces.SessionService {
 	return &SessionService{
-		sessionRepo: sessionRepo,
-		messageRepo: messageRepo,
+		sessionRepo:   sessionRepo,
+		messageRepo:   messageRepo,
+		retrievalRepo: retrievalRepo,
 	}
 }
 
-// CreateSession 创建会话
+// CreateSession 创建会话（同时保存 RAG 配置）
 func (s *SessionService) CreateSession(ctx context.Context, userID int64, req *types.CreateSessionRequest) (*types.SessionResponse, error) {
-	// 调用仓储创建会话（repository会处理默认值）
+	// 调用仓储创建会话
 	session, err := s.sessionRepo.Create(ctx, userID, req)
 	if err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}
 
-	return s.toSessionResponse(session), nil
+	// 如果请求包含 RAG 配置，保存到 retrieval_settings 表
+	if req.RAGConfig != nil {
+		tenantID := session.TenantID
+		if tenantID == 0 {
+			if tid, ok := ctx.Value("tenant_id").(int64); ok {
+				tenantID = tid
+			}
+		}
+		if tenantID > 0 {
+			if err := s.retrievalRepo.UpsertBySessionID(ctx, session.ID, tenantID, req.RAGConfig); err != nil {
+				// 记录错误但不影响会话创建
+				fmt.Printf("⚠️ [CreateSession] 保存 RAG 配置失败: %v\n", err)
+			}
+		}
+	}
+
+	// 构建响应，包含 RAG 配置
+	resp := s.toSessionResponse(session)
+	if req.RAGConfig != nil {
+		resp.RAGConfig = req.RAGConfig
+	}
+	return resp, nil
 }
 
-// GetSessionByID 根据ID获取会话
+// GetSessionByID 根据ID获取会话（包含 RAG 配置）
 func (s *SessionService) GetSessionByID(ctx context.Context, id string) (*types.SessionResponse, error) {
 	// 从上下文获取用户ID，进行权限验证
 	userID, ok := ctx.Value("user_id").(int64)
@@ -48,7 +74,7 @@ func (s *SessionService) GetSessionByID(ctx context.Context, id string) (*types.
 		if session.UserID != userID {
 			return nil, fmt.Errorf("无权访问该会话")
 		}
-		return s.toSessionResponse(session), nil
+		return s.buildSessionResponseWithRAG(ctx, session)
 	}
 
 	// 如果没有 user_id，则直接查询（兼容旧逻辑）
@@ -57,10 +83,10 @@ func (s *SessionService) GetSessionByID(ctx context.Context, id string) (*types.
 		return nil, err
 	}
 
-	return s.toSessionResponse(session), nil
+	return s.buildSessionResponseWithRAG(ctx, session)
 }
 
-// GetSessionDetail 获取会话详情（包含消息）
+// GetSessionDetail 获取会话详情（包含消息和 RAG 配置）
 func (s *SessionService) GetSessionDetail(ctx context.Context, id string) (*types.SessionDetailResponse, error) {
 	session, err := s.sessionRepo.FindByID(ctx, id)
 	if err != nil {
@@ -91,13 +117,19 @@ func (s *SessionService) GetSessionDetail(ctx context.Context, id string) (*type
 		}
 	}
 
+	// 构建会话响应（包含 RAG 配置）
+	sessionResp, err := s.buildSessionResponseWithRAG(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+
 	return &types.SessionDetailResponse{
-		Session:  s.toSessionResponse(session),
+		Session:  sessionResp,
 		Messages: messages,
 	}, nil
 }
 
-// ListSessions 查询会话列表
+// ListSessions 查询会话列表（包含 RAG 配置）
 func (s *SessionService) ListSessions(ctx context.Context, req *types.ListSessionsRequest) (*types.SessionListResponse, error) {
 	// 设置默认分页参数
 	page := req.Page
@@ -130,10 +162,15 @@ func (s *SessionService) ListSessions(ctx context.Context, req *types.ListSessio
 		return nil, fmt.Errorf("查询会话列表失败: %w", err)
 	}
 
-	// 转换为响应格式
+	// 转换为响应格式（批量加载 RAG 配置）
 	sessionResponses := make([]*types.SessionResponse, 0, len(sessions))
 	for _, session := range sessions {
-		sessionResponses = append(sessionResponses, s.toSessionResponse(session))
+		resp, err := s.buildSessionResponseWithRAG(ctx, session)
+		if err != nil {
+			// 如果加载 RAG 配置失败，仍然返回会话信息
+			resp = s.toSessionResponse(session)
+		}
+		sessionResponses = append(sessionResponses, resp)
 	}
 
 	return &types.SessionListResponse{
@@ -144,12 +181,23 @@ func (s *SessionService) ListSessions(ctx context.Context, req *types.ListSessio
 	}, nil
 }
 
-// UpdateSession 更新会话
+// UpdateSession 更新会话（同时更新 RAG 配置）
 func (s *SessionService) UpdateSession(ctx context.Context, id string, req *types.UpdateSessionRequest) (*types.SessionResponse, error) {
-	// 更新
+	// 更新会话基本信息
 	err := s.sessionRepo.Update(ctx, id, req)
 	if err != nil {
 		return nil, fmt.Errorf("更新会话失败: %w", err)
+	}
+
+	// 如果请求包含 RAG 配置更新，更新到 retrieval_settings 表
+	if req.RAGConfig != nil {
+		// 获取会话以确定 tenant_id
+		session, err := s.sessionRepo.FindByID(ctx, id)
+		if err == nil && session.TenantID > 0 {
+			if err := s.retrievalRepo.UpsertBySessionID(ctx, id, session.TenantID, req.RAGConfig); err != nil {
+				fmt.Printf("⚠️ [UpdateSession] 更新 RAG 配置失败: %v\n", err)
+			}
+		}
 	}
 
 	// 重新获取更新后的会话
@@ -158,7 +206,8 @@ func (s *SessionService) UpdateSession(ctx context.Context, id string, req *type
 		return nil, err
 	}
 
-	return s.toSessionResponse(session), nil
+	// 构建响应，包含 RAG 配置
+	return s.buildSessionResponseWithRAG(ctx, session)
 }
 
 // DeleteSession 删除会话
@@ -202,30 +251,71 @@ func (s *SessionService) ActivateSession(ctx context.Context, id string) error {
 	return nil
 }
 
-// toSessionResponse 转换为会话响应格式
-func (s *SessionService) toSessionResponse(session *types.SessionEntity) *types.SessionResponse {
-	resp := &types.SessionResponse{
-		ID:            session.ID,
-		TenantID:      session.TenantID,
-		UserID:        session.UserID,
-		Title:         session.Title,
-		Description:   session.Description,
-		KBID:          session.KBID,
-		MaxRounds:     session.MaxRounds,
-		EnableRewrite: session.EnableRewrite,
-		MessageCount:  session.MessageCount,
-		Status:        session.Status,
-		CreatedAt:     session.CreatedAt,
-		UpdatedAt:     session.UpdatedAt,
+// buildSessionResponseWithRAG 构建包含 RAG 配置的会话响应
+func (s *SessionService) buildSessionResponseWithRAG(ctx context.Context, session *types.SessionEntity) (*types.SessionResponse, error) {
+	resp := s.toSessionResponse(session)
+
+	// 尝试从 retrieval_settings 表加载 RAG 配置
+	retrievalSetting, err := s.retrievalRepo.FindBySessionID(ctx, session.ID)
+	if err == nil && retrievalSetting != nil {
+		// 将 RetrievalSetting 转换为 RAGConfig
+		resp.RAGConfig = s.convertToRAGConfig(retrievalSetting)
+	}
+	// 如果没有找到 RAG 配置，保持为 nil（前端使用默认配置）
+
+	return resp, nil
+}
+
+// convertToRAGConfig 将 RetrievalSetting 转换为 RAGConfig
+func (s *SessionService) convertToRAGConfig(setting *types.RetrievalSetting) *types.RAGConfig {
+	config := &types.RAGConfig{
+		Enabled:             false,
+		KBID:                "",
+		VectorTopK:          15,
+		KeywordTopK:         15,
+		GraphTopK:           10,
+		SimilarityThreshold: 0.0,
+		Alpha:               0.6,
+		RetrievalModes:      []string{"vector"},
 	}
 
-	// 解析 RAGConfig JSON 字段
-	if session.RAGConfig != "" {
-		var ragConfig types.RAGConfig
-		if err := json.Unmarshal([]byte(session.RAGConfig), &ragConfig); err == nil {
-			resp.RAGConfig = &ragConfig
+	if setting.VectorTopK != nil {
+		config.VectorTopK = *setting.VectorTopK
+	}
+	if setting.VectorThreshold != nil {
+		config.SimilarityThreshold = float64(*setting.VectorThreshold)
+	}
+	if setting.BM25TopK != nil {
+		config.KeywordTopK = *setting.BM25TopK
+	}
+	if setting.GraphTopK != nil {
+		config.GraphTopK = *setting.GraphTopK
+	}
+	if setting.GraphEnabled != nil && *setting.GraphEnabled {
+		if len(config.RetrievalModes) == 1 && config.RetrievalModes[0] == "vector" {
+			config.RetrievalModes = []string{"vector", "graph"}
+		} else {
+			config.RetrievalModes = append(config.RetrievalModes, "graph")
 		}
 	}
+	if setting.HybridAlpha != nil {
+		config.Alpha = float32(*setting.HybridAlpha)
+	}
 
-	return resp
+	return config
+}
+
+// toSessionResponse 转换为会话响应格式（不包含 RAG 配置）
+func (s *SessionService) toSessionResponse(session *types.SessionEntity) *types.SessionResponse {
+	return &types.SessionResponse{
+		ID:           session.ID,
+		TenantID:     session.TenantID,
+		UserID:       session.UserID,
+		Title:        session.Title,
+		Description:  session.Description,
+		Status:       session.Status,
+		MessageCount: session.MessageCount,
+		CreatedAt:    session.CreatedAt,
+		UpdatedAt:    session.UpdatedAt,
+	}
 }

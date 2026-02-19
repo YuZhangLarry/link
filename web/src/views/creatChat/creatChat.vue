@@ -17,10 +17,6 @@
           />
         </el-form-item>
 
-        <el-form-item label="最大轮次">
-          <el-input-number v-model="formData.maxRounds" :min="1" :max="100" />
-        </el-form-item>
-
         <el-form-item>
           <el-button type="primary" @click="handleCreate" :loading="creating">
             创建
@@ -43,8 +39,7 @@ const router = useRouter()
 const creating = ref(false)
 const formData = reactive({
   title: '',
-  description: '',
-  maxRounds: 50
+  description: ''
 })
 
 function goBack() {
@@ -61,8 +56,7 @@ async function handleCreate() {
   try {
     const res = await sessionApi.create({
       title: formData.title,
-      description: formData.description,
-      max_rounds: formData.maxRounds
+      description: formData.description
     })
 
     if (res.data) {
@@ -80,11 +74,5 @@ async function handleCreate() {
 <style scoped>
 .create-chat-container {
   padding: 24px;
-  background: white;
-  border-radius: 8px;
-}
-
-.form-container {
-  margin-top: 24px;
 }
 </style>

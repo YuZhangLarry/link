@@ -10,9 +10,19 @@ export interface ApiResponse<T = any> {
   error?: string
 }
 
+// 获取 API 基础 URL
+const getBaseURL = () => {
+  // 开发环境：直接访问后端，方便在浏览器 Network 面板查看请求
+  if (import.meta.env.DEV && import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+  // 生产环境：使用相对路径
+  return '/api/v1'
+}
+
 // 创建axios实例
 const service: AxiosInstance = axios.create({
-  baseURL: '/api/v1',
+  baseURL: getBaseURL(),
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json'

@@ -1,11 +1,19 @@
 import type { ChatRequest, StreamChatEvent } from '@/types'
 import { storage } from '@/utils/security'
 
+// 获取 API 基础 URL
+const getApiBaseURL = () => {
+  if (import.meta.env.DEV && import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL
+  }
+  return '/api/v1'
+}
+
 /**
  * SSE流式聊天
  */
 export async function* streamChat(data: ChatRequest): AsyncGenerator<StreamChatEvent> {
-  const response = await fetch('/api/v1/chat/stream', {
+  const response = await fetch(`${getApiBaseURL()}/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -78,9 +86,10 @@ export async function* streamChatWithAuth(data: ChatRequest): AsyncGenerator<Str
   }
 
   // 根据是否启用 RAG 选择不同的端点
+  const apiBase = getApiBaseURL()
   const url = data.rag_config?.enabled
-    ? '/api/v1/chat/rag/stream'
-    : '/api/v1/chat/auth/stream'
+    ? `${apiBase}/chat/rag/stream`
+    : `${apiBase}/chat/auth/stream`
 
   const response = await fetch(url, {
     method: 'POST',

@@ -70,7 +70,8 @@ import {
   Setting,
   User as UserIcon,
   SwitchButton,
-  Share
+  Share,
+  DataAnalysis
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
@@ -88,6 +89,7 @@ const menuItems = computed(() => [
   { path: '/knowledge', title: t('menu.knowledge'), icon: Document },
   { path: '/graphs', title: t('menu.graph'), icon: Share },
   { path: '/agent', title: t('menu.agent'), icon: UserIcon },
+  { path: '/evaluation', title: t('menu.evaluation'), icon: DataAnalysis },
   { path: '/settings', title: t('menu.settings'), icon: Setting }
 ])
 

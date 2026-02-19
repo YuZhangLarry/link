@@ -180,16 +180,11 @@ func (h *RAGChatHandler) getSessionIDWithRAG(c *gin.Context, req types.ChatReque
 	session, err := h.sessionService.CreateSession(c.Request.Context(), userID, &types.CreateSessionRequest{
 		Title:       generateSessionTitle(req.Content),
 		Description: "自动创建的会话",
-		MaxRounds:   50,
+		RAGConfig:   req.RAGConfig, // 直接传递 RAG 配置
 	})
 	if err != nil {
 		log.Printf("❌ [getSessionIDWithRAG] 创建会话失败: %v", err)
 		return "" // 创建失败返回空字符串
-	}
-
-	// 如果请求携带了 RAG 配置，保存到 retrieval_settings 表
-	if req.RAGConfig != nil {
-		h.updateSessionRAGConfig(c.Request.Context(), session.ID, req.RAGConfig)
 	}
 
 	log.Printf("✅ [getSessionIDWithRAG] 新会话创建成功: ID=%s, TenantID=%d, UserID=%d", session.ID, session.TenantID, session.UserID)
@@ -684,7 +679,6 @@ func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID
 	session, err := h.sessionService.CreateSession(c.Request.Context(), userID, &types.CreateSessionRequest{
 		Title:       generateSessionTitle(req.Content),
 		Description: "自动创建的会话",
-		MaxRounds:   50,
 	})
 	if err != nil {
 		log.Printf("❌ [getSessionID] 创建会话失败: %v", err)

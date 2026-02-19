@@ -62,32 +62,9 @@ func (s *ChatService) Chat(ctx context.Context, req *types.ChatRequest) (*types.
 
 // chatWithAgent 使用 Agent 进行聊天（支持工具调用）
 func (s *ChatService) chatWithAgent(ctx context.Context, req *types.ChatRequest) (*types.ChatResponse, error) {
-	// 转换消息格式为 Eino 格式
-	messages := s.convertToEinoMessages(req.History, req.Content)
-
-	// 转换选项
-	opts := s.convertToEinoOptions(req.Options)
-
-	// 使用 Agent 进行对话
-	resp, err := s.agent.Chat(ctx, messages, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("agent chat failed: %w", err)
-	}
-
-	// 转换响应
-	toolCallPtrs := make([]*schema.ToolCall, len(resp.ToolCalls))
-	for i := range resp.ToolCalls {
-		toolCallPtrs[i] = &resp.ToolCalls[i]
-	}
-
-	return &types.ChatResponse{
-		MessageID:    generateMessageID(),
-		Content:      resp.Content,
-		Role:         string(resp.Role),
-		TokenCount:   0, // 需要从 resp 中获取
-		ToolCalls:    convertEinoToolCalls(toolCallPtrs),
-		FinishReason: "stop",
-	}, nil
+	// TODO: 集成新的 Agent 架构
+	// 暂时回退到普通聊天
+	return s.chatNormal(ctx, req)
 }
 
 // chatNormal 普通聊天（不使用工具）

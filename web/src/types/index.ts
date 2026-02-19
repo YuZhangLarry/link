@@ -135,13 +135,15 @@ export const defaultRAGConfig: RAGConfig = {
 }
 
 // ============ 会话相关 ============
+export type ChatMode = 'normal' | 'agent'
+
 export interface Session {
   id: string
   title: string
   description?: string
   status: number
-  max_rounds: number
-  rag_config?: RAGConfig
+  message_count?: number
+  rag_config?: RAGConfig  // RAG 配置（从后端聚合获取）
   created_at: string
   updated_at: string
 }
@@ -149,15 +151,14 @@ export interface Session {
 export interface CreateSessionRequest {
   title?: string
   description?: string
-  max_rounds?: number
-  rag_config?: RAGConfig
+  rag_config?: RAGConfig  // 创建时可指定 RAG 配置
 }
 
 export interface UpdateSessionRequest {
   title?: string
   description?: string
   status?: number
-  rag_config?: RAGConfig
+  rag_config?: RAGConfig  // 更新时可修改 RAG 配置
 }
 
 export interface SessionDetail {
@@ -179,6 +180,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   tool_calls?: string
+  agent_steps?: string  // Agent 思考步骤（JSON 字符串）
   token_count: number
   created_at: string
 }
@@ -188,6 +190,7 @@ export interface CreateMessageRequest {
   role: string
   content: string
   tool_calls?: string
+  agent_steps?: string  // Agent 思考步骤（JSON 字符串）
   token_count?: number
 }
 
@@ -352,5 +355,61 @@ export interface Agent {
   updated_at: string
 }
 
+// Agent 流式事件类型
+export interface AgentStreamEvent {
+  event: 'step' | 'done' | 'error' | 'session'
+  session_id?: string
+  step?: number
+  step_count?: number
+  // 步骤类型 - 扩展以支持更多类型
+  type?: 'thinking' | 'agent_call' | 'search' | 'utility' | 'action'
+    | 'plan' | 'analysis' | 'review' | 'synthesis' | 'retrieval' | 'tool_result'
+    | 'complete' | 'error' | 'thought' | 'reflection'  // 兼容旧类型
+  stage?: string  // 阶段: "信息检索", "反思校验", "规划阶段", "分析阶段", etc.
+  content?: string
+  thought?: string
+  tool_name?: string
+  tool_desc?: string
+  tool_params?: Record<string, any>
+  tool_id?: string
+  tool_output?: string
+  is_agent?: boolean
+  agent_name?: string
+  agent_stage?: string
+  related_tool?: string
+  related_step?: number
+  reason?: string
+  complete?: boolean
+  answer?: string
+}
+
+// Agent 思考步骤（用于显示）
+export interface AgentStep {
+  id: string
+  step: number
+  // 扩展类型以支持更多步骤类型
+  type: 'thinking' | 'agent_call' | 'search' | 'utility' | 'action'
+    | 'plan' | 'analysis' | 'review' | 'synthesis' | 'retrieval' | 'tool_result'
+    | 'complete' | 'error' | 'thought' | 'reflection'
+  stage?: string  // 阶段
+  content?: string
+  thought?: string
+  tool_name?: string
+  tool_desc?: string
+  tool_params?: Record<string, any>
+  tool_output?: string
+  tool_id?: string
+  is_agent?: boolean
+  agent_name?: string
+  agent_stage?: string
+  related_tool?: string
+  related_step?: number
+  reason?: string
+  timestamp: number
+  isActive?: boolean
+}
+
 // 导出图谱相关类型
 export * from './graph'
+// 导出测评相关类型
+export * from './evaluation'

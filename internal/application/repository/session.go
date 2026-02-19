@@ -30,64 +30,15 @@ func (r *sessionRepository) Create(ctx context.Context, userID int64, req *types
 	// 获取租户ID
 	tenantID := getTenantIDFromContext(ctx)
 
-	// 设置默认值
-	maxRounds := req.MaxRounds
-	if maxRounds == 0 {
-		maxRounds = 10
-	}
-	enableRewrite := req.EnableRewrite
-	keywordThreshold := float32(0.5)
-	if req.KeywordThreshold != nil {
-		keywordThreshold = *req.KeywordThreshold
-	}
-	vectorThreshold := float32(0.5)
-	if req.VectorThreshold != nil {
-		vectorThreshold = *req.VectorThreshold
-	}
-	embeddingTopK := 10
-	if req.EmbeddingTopK != nil {
-		embeddingTopK = *req.EmbeddingTopK
-	}
-	rerankTopK := 10
-	if req.RerankTopK != nil {
-		rerankTopK = *req.RerankTopK
-	}
-	rerankThreshold := float32(0.65)
-	if req.RerankThreshold != nil {
-		rerankThreshold = *req.RerankThreshold
-	}
-
 	// 创建会话实体
 	session := &types.SessionEntity{
-		ID:                sessionID,
-		TenantID:          tenantID,
-		UserID:            userID,
-		Title:             req.Title,
-		Description:       req.Description,
-		MaxRounds:         maxRounds,
-		EnableRewrite:     enableRewrite,
-		KeywordThreshold:  keywordThreshold,
-		VectorThreshold:   vectorThreshold,
-		RerankModelID:     "",
-		EmbeddingTopK:     embeddingTopK,
-		RerankTopK:        rerankTopK,
-		RerankThreshold:   rerankThreshold,
-		Status:            1,    // 默认正常状态
-		SummaryParameters: "{}", // 默认空JSON
-		AgentConfig:       "{}", // 默认空JSON
-		ContextConfig:     "{}", // 默认空JSON
-		RAGConfig:         "",   // 默认空字符串
+		ID:          sessionID,
+		TenantID:    tenantID,
+		UserID:      userID,
+		Title:       req.Title,
+		Description: req.Description,
+		Status:      1, // 默认正常状态
 	}
-
-	// 处理 KBID (可空)
-	if req.KBID != nil {
-		session.KBID = *req.KBID
-	}
-	if req.RerankModelID != nil {
-		session.RerankModelID = *req.RerankModelID
-	}
-
-	// 注意：RAGConfig 现在存储在 retrieval_settings 表中，不在这里处理
 
 	if err := r.db.WithContext(ctx).Create(session).Error; err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
@@ -197,22 +148,9 @@ func (r *sessionRepository) Update(ctx context.Context, id string, req *types.Up
 	if req.Description != nil {
 		updates["description"] = *req.Description
 	}
-	if req.MaxRounds != nil {
-		updates["max_rounds"] = *req.MaxRounds
-	}
-	if req.EnableRewrite != nil {
-		updates["enable_rewrite"] = *req.EnableRewrite
-	}
-	if req.KeywordThreshold != nil {
-		updates["keyword_threshold"] = *req.KeywordThreshold
-	}
-	if req.VectorThreshold != nil {
-		updates["vector_threshold"] = *req.VectorThreshold
-	}
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
-	// 注意：RAGConfig 现在存储在 retrieval_settings 表中，不在这里处理
 
 	if err := r.db.WithContext(ctx).Model(&session).Updates(updates).Error; err != nil {
 		return fmt.Errorf("更新会话失败: %w", err)
@@ -221,11 +159,8 @@ func (r *sessionRepository) Update(ctx context.Context, id string, req *types.Up
 	return nil
 }
 
-// UpdateMessageCount 更新会话消息数量
-// 注意：数据库中没有 message_count 字段，此方法为兼容性保留（no-op）
+// UpdateMessageCount 更新会话消息数量（no-op，消息数量动态计算）
 func (r *sessionRepository) UpdateMessageCount(ctx context.Context, sessionID string) error {
-	// no-op - 数据库中没有 message_count 字段
-	// MessageCount 现在是通过 gorm:"-" 标记的动态字段
 	return nil
 }
 
@@ -288,11 +223,8 @@ func (r *sessionRepository) CountByUserID(ctx context.Context, userID int64) (in
 	return count, nil
 }
 
-// IncrementMessageCount 增加消息计数
-// 注意：数据库中没有 message_count 字段，此方法为兼容性保留（no-op）
+// IncrementMessageCount 增加消息计数（no-op）
 func (r *sessionRepository) IncrementMessageCount(ctx context.Context, sessionID string) error {
-	// no-op - 数据库中没有 message_count 字段
-	// MessageCount 现在是通过 gorm:"-" 标记的动态字段
 	return nil
 }
 

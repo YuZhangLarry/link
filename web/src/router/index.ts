@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
         name: 'AgentList',
         component: () => import('@/views/agent/AgentList.vue'),
         meta: { title: 'Agent管理' }
+      },
+      {
+        path: '/evaluation',
+        name: 'EvaluationList',
+        component: () => import('@/views/evaluation/EvaluationList.vue'),
+        meta: { title: '大模型测评' }
       }
     ]
   },

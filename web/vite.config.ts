@@ -11,12 +11,13 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true
-      }
-    }
+    port: 5173
+    // 移除代理，改为直接访问后端
+    // proxy: {
+    //   '/api': {
+    //     target: 'http://localhost:8080',
+    //     changeOrigin: true
+    //   }
+    // }
   }
 })

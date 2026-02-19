@@ -117,6 +117,7 @@ export default {
     knowledge: '知识库',
     graph: '知识图谱',
     agent: 'Agent',
+    evaluation: '大模型测评',
     settings: '设置'
   },
   tenant: {

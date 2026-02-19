@@ -50,9 +50,9 @@ func (r *messageRepository) Create(ctx context.Context, req *types.CreateMessage
 		SessionID:           req.SessionID,
 		Role:                req.Role,
 		Content:             req.Content,
-		KnowledgeReferences: "{}", // 默认空JSON
-		AgentSteps:          "{}", // 默认空JSON
-		ToolCalls:           "{}", // 默认空JSON
+		KnowledgeReferences: "[]", // 默认空数组
+		AgentSteps:          "[]", // 默认空数组
+		ToolCalls:           "[]", // 默认空数组
 		IsCompleted:         false,
 		TokenCount:          req.TokenCount,
 	}

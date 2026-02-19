@@ -189,7 +189,7 @@ func LoadEmbeddingConfig() *EmbeddingConfig {
 	return &EmbeddingConfig{
 		Provider: getEnv("EMBEDDING_PROVIDER", "dashscope"),
 		APIKey:   getEnv("EMBEDDING_API_KEY", ""),
-		Model:    getEnv("EMBEDDING_MODEL", "text-embedding-v4"),
+		Model:    getEnv("EMBEDDING_MODEL", "text-embedding-v3"),
 		BaseURL:  getEnv("EMBEDDING_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"),
 	}
 }
