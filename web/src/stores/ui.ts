@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export const useUIStore = defineStore('ui', () => {
+export const useUIStore = defineStore('pic', () => {
   // 侧边栏状态
   const sidebarCollapsed = ref(false)
 

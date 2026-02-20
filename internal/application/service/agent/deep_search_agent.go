@@ -39,7 +39,9 @@ import (
 
 // MultiAgentOrchestrator 多代理协调器
 type MultiAgentOrchestrator struct {
-	agent adk.Agent
+	agent       adk.Agent
+	criticAgent adk.Agent         // Critic Agent 引用（用于强制调用）
+	config      *MultiAgentConfig // 保存配置
 }
 
 // MultiAgentConfig 多代理配置
@@ -64,6 +66,10 @@ type MultiAgentConfig struct {
 
 	// 最大迭代次数
 	MaxIterations int
+
+	// 强制反思配置
+	ForceReflection bool    // 是否强制执行反思（默认 false）
+	MinCriticScore  float64 // 最低可接受评分（默认 0.75）
 }
 
 // NewMultiAgentOrchestrator 创建多代理协调器
@@ -178,7 +184,9 @@ func NewMultiAgentOrchestrator(ctx context.Context, config *MultiAgentConfig) (*
 	}
 
 	return &MultiAgentOrchestrator{
-		agent: coordinatorAgent,
+		agent:       coordinatorAgent,
+		criticAgent: criticAgent,
+		config:      config,
 	}, nil
 }
 
@@ -211,78 +219,261 @@ func (o *MultiAgentOrchestrator) Chat(ctx context.Context, query string, opts ..
 	// 用于跟踪工具调用和结果
 	pendingToolCalls := make(map[string]*baseagent.ToolCallRecord)
 
+	// 强制反思相关状态
+	criticCalled := false
+	criticScore := 0.0
+	criticOutput := ""
+	lastAnswer := ""
+
 	stepCount := 0
-	for {
-		event, ok := iter.Next()
-		if !ok {
-			break
-		}
-		stepCount++
+	maxReflectionIterations := 2 // 最多进行 2 轮反思修订
 
-		if event.Err != nil {
-			response.Success = false
-			response.Error = event.Err.Error()
-			return response, fmt.Errorf("agent execution failed at step %d: %w", stepCount, event.Err)
+	for iteration := 0; iteration <= maxReflectionIterations; iteration++ {
+		if iteration > 0 {
+			// 这是反思后的修订迭代
+			log.Printf("🔄 [强制反思] 开始第 %d 轮修订", iteration)
+
+			// 构建修订消息：包含 Critic 的反馈
+			revisionPrompt := fmt.Sprintf(`请根据以下评审意见修订答案：
+
+## 之前的答案
+%s
+
+## 评审意见
+%s
+
+请根据评审意见修订答案，输出修订后的完整答案。`, lastAnswer, criticOutput)
+
+			messages = []adk.Message{schema.UserMessage(query), schema.AssistantMessage(lastAnswer, nil), schema.UserMessage(revisionPrompt)}
+			iter = runner.Run(ctx, messages)
+
+			// 重置状态
+			criticCalled = false
+			criticScore = 0.0
+			criticOutput = ""
+			pendingToolCalls = make(map[string]*baseagent.ToolCallRecord)
 		}
 
-		if event.Output != nil && event.Output.MessageOutput != nil {
-			msg, err := event.Output.MessageOutput.GetMessage()
-			if err != nil {
-				continue
+		for {
+			event, ok := iter.Next()
+			if !ok {
+				break
+			}
+			stepCount++
+
+			if event.Err != nil {
+				response.Success = false
+				response.Error = event.Err.Error()
+				return response, fmt.Errorf("agent execution failed at step %d: %w", stepCount, event.Err)
 			}
 
-			// 记录工具调用
-			for _, tc := range msg.ToolCalls {
-				toolRecord := &baseagent.ToolCallRecord{
-					ID:       tc.ID,
-					Name:     tc.Function.Name,
-					Input:    tc.Function.Arguments,
-					Metadata: make(map[string]interface{}),
+			if event.Output != nil && event.Output.MessageOutput != nil {
+				msg, err := event.Output.MessageOutput.GetMessage()
+				if err != nil {
+					continue
 				}
-				response.ToolCalls = append(response.ToolCalls, toolRecord)
-				response.Sources = append(response.Sources, tc.Function.Name)
 
-				// 记录待处理的工具调用，等待结果
-				pendingToolCalls[tc.ID] = toolRecord
-			}
-
-			// 处理工具结果（通过消息内容返回）
-			if len(msg.ToolCalls) == 0 && msg.Content != "" {
-				// 检查是否是工具调用的结果
-				if len(pendingToolCalls) > 0 {
-					// 尝试将内容关联到最近的工具调用
-					for _, tc := range pendingToolCalls {
-						if tc.Output == "" {
-							// 限制输出长度，避免过长
-							output := msg.Content
-							if len(output) > 1000 {
-								output = output[:1000] + "...(truncated)"
-							}
-							tc.Output = output
-							break // 每个消息只关联一个工具结果
-						}
+				// 记录工具调用
+				for _, tc := range msg.ToolCalls {
+					toolRecord := &baseagent.ToolCallRecord{
+						ID:       tc.ID,
+						Name:     tc.Function.Name,
+						Input:    tc.Function.Arguments,
+						Metadata: make(map[string]interface{}),
 					}
-					// 清空待处理列表（假设每次都是按顺序处理）
-					pendingToolCalls = make(map[string]*baseagent.ToolCallRecord)
+					response.ToolCalls = append(response.ToolCalls, toolRecord)
+					response.Sources = append(response.Sources, tc.Function.Name)
+
+					// 检测是否调用了 critic_agent
+					if tc.Function.Name == "Critic" || tc.Function.Name == "critic_agent" {
+						criticCalled = true
+						log.Printf("🔍 [强制反思] 检测到 Critic 调用")
+					}
+
+					// 记录待处理的工具调用，等待结果
+					pendingToolCalls[tc.ID] = toolRecord
 				}
 
-				// 最终答案（助手回复且没有工具调用）
-				if (msg.Role == schema.Assistant || msg.Role == "") && response.Answer == "" {
-					// 检查是否是最终答案（不是工具结果）
-					if !isToolResultContent(msg.Content) {
+				// 处理工具结果（通过消息内容返回）
+				if len(msg.ToolCalls) == 0 && msg.Content != "" {
+					// 检查是否是工具调用的结果
+					if len(pendingToolCalls) > 0 {
+						// 尝试将内容关联到最近的工具调用
+						for _, tc := range pendingToolCalls {
+							if tc.Output == "" {
+								// 限制输出长度，避免过长
+								output := msg.Content
+								if len(output) > 2000 {
+									output = output[:2000] + "...(truncated)"
+								}
+								tc.Output = output
+
+								// 如果是 Critic 的输出，尝试提取评分
+								if strings.Contains(tc.Name, "Critic") || strings.Contains(tc.Name, "critic") {
+									criticOutput = output
+									criticScore = extractCriticScore(output)
+									log.Printf("🔍 [强制反思] Critic 评分: %.2f", criticScore)
+								}
+								break // 每个消息只关联一个工具结果
+							}
+						}
+						// 清空待处理列表（假设每次都是按顺序处理）
+						pendingToolCalls = make(map[string]*baseagent.ToolCallRecord)
+					}
+
+					// 最终答案（助手回复且没有工具调用）
+					if (msg.Role == schema.Assistant || msg.Role == "") && !isToolResultContent(msg.Content) {
+						lastAnswer = msg.Content
 						response.Answer = msg.Content
 					}
 				}
 			}
+
+			if event.Action != nil && event.Action.Exit {
+				break
+			}
 		}
 
-		if event.Action != nil && event.Action.Exit {
-			break
+		// ========== 强制反思检查 ==========
+		log.Printf("🔍 [强制反思] 迭代 %d 结束，Critic调用: %v, 强制反思: %v",
+			iteration, criticCalled, o.config.ForceReflection)
+
+		// 如果启用了强制反思且 Critic 未被调用，强制调用
+		if o.config.ForceReflection && !criticCalled && lastAnswer != "" {
+			log.Printf("🔄 [强制反思] Critic 未被调用，强制执行评审")
+
+			// 创建 Critic Runner（使用 Critic Agent）
+			criticRunner := adk.NewRunner(ctx, adk.RunnerConfig{
+				Agent:           o.criticAgent, // 直接使用 Critic Agent
+				EnableStreaming: false,
+			})
+
+			criticQuery := fmt.Sprintf("请评审以下答案的质量：\n\n%s", lastAnswer)
+			criticIter := criticRunner.Run(ctx, []adk.Message{schema.UserMessage(criticQuery)})
+
+			// 获取 Critic 的输出
+			criticResponse := ""
+			for {
+				event, ok := criticIter.Next()
+				if !ok {
+					break
+				}
+				if event.Err != nil {
+					log.Printf("⚠️  [强制反思] Critic 调用失败: %v", event.Err)
+					break
+				}
+				if event.Output != nil && event.Output.MessageOutput != nil {
+					msg, err := event.Output.MessageOutput.GetMessage()
+					if err == nil && msg.Content != "" {
+						criticResponse = msg.Content
+					}
+				}
+			}
+
+			if criticResponse != "" {
+				criticOutput = criticResponse
+				criticScore = extractCriticScore(criticResponse)
+				criticCalled = true
+
+				log.Printf("🔍 [强制反思] 强制 Critic 完成，评分: %.2f", criticScore)
+
+				// 记录工具调用
+				response.ToolCalls = append(response.ToolCalls, &baseagent.ToolCallRecord{
+					ID:    "forced-critic",
+					Name:  "Critic (Forced)",
+					Input: criticQuery,
+					Output: func() string {
+						if len(criticResponse) > 1000 {
+							return criticResponse[:1000] + "...(truncated)"
+						}
+						return criticResponse
+					}(),
+				})
+			}
 		}
+
+		// 检查是否需要修订
+		minScore := o.config.MinCriticScore
+		if minScore <= 0 {
+			minScore = 0.75 // 默认阈值
+		}
+
+		// 如果 Critic 已调用且评分低于阈值，继续下一轮修订
+		if criticCalled && criticScore > 0 && criticScore < minScore && iteration < maxReflectionIterations {
+			log.Printf("🔄 [强制反思] 评分 %.2f 低于阈值 %.2f，开始修订...", criticScore, minScore)
+			continue // 进入下一轮迭代
+		}
+
+		// 评分合格或未启用强制反思，退出
+		if criticCalled && criticScore > 0 {
+			log.Printf("✅ [强制反思] 评分 %.2f 合格，完成", criticScore)
+		}
+		break
 	}
 
 	response.Success = response.Error == ""
 	return response, nil
+}
+
+// extractCriticScore 从 Critic 输出中提取评分
+func extractCriticScore(output string) float64 {
+	// 尝试多种格式提取评分
+	// 格式1: "总体得分：X.XX / 1.0"
+	if strings.Contains(output, "总体得分") {
+		parts := strings.Split(output, "总体得分")
+		if len(parts) > 1 {
+			scoreStr := parts[1]
+			// 提取数字
+			var score float64
+			_, err := fmt.Sscanf(scoreStr, "%f", &score)
+			if err == nil && score > 0 && score <= 1 {
+				return score
+			}
+			// 尝试提取 "X.XX" 格式
+			for i := 0; i < len(scoreStr)-3; i++ {
+				if scoreStr[i] >= '0' && scoreStr[i] <= '9' {
+					n, _ := fmt.Sscanf(scoreStr[i:], "%f", &score)
+					if n == 1 && score > 0 && score <= 1 {
+						return score
+					}
+				}
+			}
+		}
+	}
+
+	// 格式2: "评分：X.XX"
+	if strings.Contains(output, "评分") {
+		parts := strings.Split(output, "评分")
+		if len(parts) > 1 {
+			var score float64
+			_, err := fmt.Sscanf(parts[1], "%f", &score)
+			if err == nil && score > 0 && score <= 100 {
+				// 如果是 0-100 分制，转换为 0-1
+				if score > 1 {
+					score = score / 100
+				}
+				return score
+			}
+		}
+	}
+
+	// 格式3: 寻找 0.XX 或 X.XX 格式的数字
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "分") || strings.Contains(line, "Score") {
+			var score float64
+			_, err := fmt.Sscanf(line, "%f", &score)
+			if err == nil && score > 0 && score <= 100 {
+				if score > 1 {
+					score = score / 100
+				}
+				return score
+			}
+		}
+	}
+
+	// 未找到明确评分，返回默认值
+	return 0.75 // 默认为合格分数
 }
 
 // isToolResultContent 判断内容是否是工具执行结果

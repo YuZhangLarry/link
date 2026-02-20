@@ -1,0 +1,1046 @@
+/* ==================== 全局样式系统 ==================== */
+/* 基于背景图片的配色方案 - 蓝紫色调玻璃态风格 */
+
+:root {
+  /* 主色调 - 与 App.vue 保持一致的粉蓝色调 */
+  --color-primary: #ff7eb3;
+  --color-primary-light: #ffb3d9;
+  --color-primary-dark: #ff5a9f;
+
+  /* 辅助色 */
+  --color-secondary: #7afcff;
+  --color-accent: #b8b8ff;
+  --color-success: #7affc3;
+  --color-warning: #ffd97d;
+  --color-danger: #ff7e7e;
+
+  /* 中性色 */
+  --color-bg-primary: rgba(0, 0, 0, 0.4);
+  --color-bg-secondary: rgba(0, 0, 0, 0.3);
+  --color-bg-tertiary: rgba(0, 0, 0, 0.2);
+  --color-bg-elevated: rgba(255, 255, 255, 0.1);
+  --color-bg-hover: rgba(255, 255, 255, 0.15);
+
+  /* 文字颜色 */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.85);
+  --color-text-muted: rgba(255, 255, 255, 0.6);
+  --color-text-disabled: rgba(255, 255, 255, 0.4);
+
+  /* 边框颜色 */
+  --color-border-primary: rgba(255, 255, 255, 0.2);
+  --color-border-secondary: rgba(255, 255, 255, 0.1);
+  --color-border-focus: var(--color-primary);
+
+  /* 阴影 */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.25);
+  --shadow-glow: 0 0 20px rgba(255, 126, 179, 0.4);
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* 间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  /* 过渡 */
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+  --transition-slow: 350ms ease;
+
+  /* 字体 */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* 字号 */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+}
+
+/* ==================== 背景系统 ==================== */
+.bg-primary {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: url('@/wallhaven-d83m63_1920x1080.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.bg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.9) 0%,
+    rgba(30, 27, 75, 0.85) 25%,
+    rgba(49, 46, 129, 0.8) 50%,
+    rgba(30, 27, 75, 0.85) 75%,
+    rgba(15, 23, 42, 0.9) 100%
+  );
+}
+
+.bg-noise {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+/* ==================== 玻璃态基础类 ==================== */
+.glass {
+  background: var(--color-bg-elevated);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--color-border-primary);
+}
+
+.glass-dark {
+  background: var(--color-bg-secondary);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid var(--color-border-primary);
+}
+
+.glass-light {
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ==================== 滚动条样式 ==================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-bg-tertiary) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-bg-elevated);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ==================== 全局重置 ==================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  background: transparent;
+  overflow-x: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==================== 选中状态 ==================== */
+::selection {
+  background: var(--color-primary);
+  color: white;
+}
+
+::-moz-selection {
+  background: var(--color-primary);
+  color: white;
+}
+
+/* ==================== 链接样式 ==================== */
+a {
+  color: var(--color-primary-light);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+a:hover {
+  color: var(--color-primary);
+}
+
+/* ==================== 焦点样式 ==================== */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ==================== 动画 ==================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideLeft {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--color-primary),
+                0 0 10px var(--color-primary);
+  }
+  50% {
+    box-shadow: 0 0 15px var(--color-primary),
+                0 0 25px var(--color-primary),
+                0 0 35px var(--color-primary);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* ==================== 工具类 ==================== */
+.animate-fade-in {
+  animation: fadeIn var(--transition-base);
+}
+
+.animate-slide-up {
+  animation: slideUp var(--transition-base);
+}
+
+.animate-slide-down {
+  animation: slideDown var(--transition-base);
+}
+
+.animate-scale-in {
+  animation: scaleIn var(--transition-base);
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ==================== 文字样式 ==================== */
+.text-primary {
+  color: var(--color-text-primary);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--color-primary-light), var(--color-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-glow {
+  text-shadow: 0 0 20px var(--color-primary);
+}
+
+/* ==================== 全局半透明样式 ==================== */
+/* 确保背景图穿透到所有层 */
+#app,
+body,
+html {
+  background: transparent !important;
+}
+
+/* 清除常见容器的白色背景，确保半透明 */
+.page-container,
+.content-container,
+.list-container,
+.detail-container,
+.view-container,
+.evaluation-list-container,
+.agent-list-container,
+.knowledge-list-container,
+.graph-list-container,
+.graph-view-container,
+.knowledge-detail-container,
+.settings-container,
+.chat-page,
+.main-content,
+.messages-area,
+.input-area,
+.sidebar,
+.sidebar-header,
+.sessions-list {
+  background-color: transparent !important;
+}
+
+/* 只对指定的容器添加半透明背景 */
+.page-container,
+.content-container,
+.list-container,
+.detail-container,
+.view-container,
+.evaluation-list-container,
+.agent-list-container,
+.knowledge-list-container,
+.graph-list-container,
+.graph-view-container,
+.knowledge-detail-container,
+.settings-container,
+.chat-page,
+.main-content,
+.sidebar {
+  position: relative;
+  background: rgba(0, 0, 0, 0.25) !important;
+  backdrop-filter: blur(20px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+/* 侧边栏特殊处理 */
+.sidebar {
+  border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 0 !important;
+}
+
+.sidebar-header {
+  background: rgba(0, 0, 0, 0.15) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0 !important;
+}
+
+/* 主内容区 */
+.main-content,
+.messages-area,
+.input-area {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* 对话框头部 */
+.chat-header {
+  background: rgba(0, 0, 0, 0.15) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ==================== Element Plus 组件半透明覆盖 ==================== */
+
+/* Dialog 对话框 */
+.el-dialog {
+  background: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.el-dialog__header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-dialog__title {
+  color: var(--color-text-primary) !important;
+}
+
+.el-dialog__body {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Dialog 遮罩层 */
+.el-overlay {
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+/* Card 卡片 */
+.el-card {
+  background: rgba(0, 0, 0, 0.2) !important;
+  backdrop-filter: blur(16px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-card__header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.el-card__body {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Table 表格 */
+.el-table {
+  background: transparent !important;
+}
+
+.el-table__body tr,
+.el-table__header-wrapper {
+  background: transparent !important;
+}
+
+.el-table th,
+.el-table td {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.el-table th {
+  color: var(--color-text-primary) !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.el-table__row:hover td {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.el-table tr.current-row > td {
+  background: rgba(99, 102, 241, 0.15) !important;
+}
+
+/* 表格斑马纹 */
+.el-table--striped .el-table__body tr.el-table__row--striped td {
+  background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Input 输入框 */
+.el-input__wrapper {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: none !important;
+}
+
+.el-input__inner {
+  color: var(--color-text-primary) !important;
+  background: transparent !important;
+}
+
+.el-input__inner::placeholder {
+  color: var(--color-text-disabled) !important;
+}
+
+.el-input__wrapper:hover {
+  border-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.el-input__wrapper.is-focus {
+  border-color: var(--color-primary) !important;
+}
+
+.el-textarea__inner {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Button 按钮 */
+.el-button {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: var(--color-text-primary) !important;
+}
+
+.el-button--primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark)) !important;
+  border-color: transparent !important;
+  color: white !important;
+}
+
+.el-button--success {
+  background: linear-gradient(135deg, var(--color-success), #16a34a) !important;
+  border-color: transparent !important;
+  color: white !important;
+}
+
+.el-button--danger {
+  background: linear-gradient(135deg, var(--color-danger), #dc2626) !important;
+  border-color: transparent !important;
+  color: white !important;
+}
+
+.el-button--warning {
+  background: linear-gradient(135deg, var(--color-warning), #d97706) !important;
+  border-color: transparent !important;
+  color: white !important;
+}
+
+.el-button--info {
+  background: linear-gradient(135deg, #64748b, #475569) !important;
+  border-color: transparent !important;
+  color: white !important;
+}
+
+/* Select 选择器 */
+.el-select__wrapper {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: none !important;
+}
+
+.el-select__placeholder {
+  color: var(--color-text-disabled) !important;
+}
+
+.el-select__selected-item {
+  color: var(--color-text-primary) !important;
+}
+
+.el-select-dropdown {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.el-select-dropdown__item {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-select-dropdown__item:hover,
+.el-select-dropdown__item.is-selected {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: var(--color-primary-light) !important;
+}
+
+/* Tag 标签 */
+.el-tag {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.el-tag--success {
+  background: rgba(34, 197, 94, 0.2) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+  color: #4ade80 !important;
+}
+
+.el-tag--danger {
+  background: rgba(239, 68, 68, 0.2) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+  color: #f87171 !important;
+}
+
+.el-tag--warning {
+  background: rgba(245, 158, 11, 0.2) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+  color: #fbbf24 !important;
+}
+
+.el-tag--info {
+  background: rgba(99, 102, 241, 0.2) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+  color: #818cf8 !important;
+}
+
+/* Switch 开关 */
+.el-switch__core {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.el-switch.is-checked .el-switch__core {
+  background: var(--color-primary) !important;
+}
+
+/* Checkbox 复选框 */
+.el-checkbox__inner {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.el-checkbox__input.is-checked .el-checkbox__inner {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* Radio 单选框 */
+.el-radio__inner {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.el-radio__input.is-checked .el-radio__inner {
+  background: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* Progress 进度条 */
+.el-progress-bar__outer {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+
+.el-progress-bar__inner {
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary)) !important;
+}
+
+/* Drawer 抽屉 */
+.el-drawer {
+  background: rgba(15, 23, 42, 0.9) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+}
+
+.el-drawer__header {
+  color: var(--color-text-primary) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Descriptions 描述列表 */
+.el-descriptions {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-descriptions__label {
+  color: var(--color-text-muted) !important;
+}
+
+.el-descriptions__content {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-descriptions__cell {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Tabs 标签页 */
+.el-tabs__item {
+  color: var(--color-text-muted) !important;
+}
+
+.el-tabs__item:hover {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-tabs__item.is-active {
+  color: var(--color-primary-light) !important;
+}
+
+.el-tabs__active-bar {
+  background: var(--color-primary) !important;
+}
+
+/* Divider 分割线 */
+.el-divider {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-divider__text {
+  background: transparent !important;
+  color: var(--color-text-muted) !important;
+}
+
+/* Form 表单 */
+.el-form-item__label {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Empty 空状态 */
+.el-empty {
+  --el-empty-description-color: var(--color-text-muted) !important;
+}
+
+/* Alert 警告 */
+.el-alert {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.el-alert__title {
+  color: var(--color-text-primary) !important;
+}
+
+.el-alert__description {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-alert--success {
+  background: rgba(34, 197, 94, 0.15) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+.el-alert--warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+.el-alert--error {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.el-alert--info {
+  background: rgba(99, 102, 241, 0.15) !important;
+  border-color: rgba(99, 102, 241, 0.3) !important;
+}
+
+/* Loading 加载 */
+.el-loading-mask {
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.el-loading-spinner .circular {
+  stroke: var(--color-primary-light) !important;
+}
+
+/* Menu 菜单 */
+.el-menu {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-menu-item {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-menu-item:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.el-menu-item.is-active {
+  background: rgba(99, 102, 241, 0.2) !important;
+  color: var(--color-primary-light) !important;
+}
+
+/* Pagination 分页 */
+.el-pagination button {
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.el-pagination button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-pager li {
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+.el-pager li:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-pager li.is-active {
+  background: var(--color-primary) !important;
+  color: white !important;
+}
+
+/* Popover 弹出框 */
+.el-popover {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: var(--color-text-secondary) !important;
+}
+
+/* Tooltip 提示 */
+.el-tooltip__popper {
+  background: rgba(0, 0, 0, 0.9) !important;
+}
+
+/* Dropdown 下拉菜单 */
+.el-dropdown-menu {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.el-dropdown-menu__item {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-dropdown-menu__item:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* InputNumber 数字输入框 */
+.el-input-number {
+  background: transparent !important;
+}
+
+.el-input-number .el-input__wrapper {
+  background: rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Slider 滑块 */
+.el-slider__runway {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.el-slider__bar {
+  background: var(--color-primary) !important;
+}
+
+.el-slider__button {
+  border: 2px solid var(--color-primary) !important;
+}
+
+/* Statistic 统计数值 */
+.el-statistic__head {
+  color: var(--color-text-muted) !important;
+}
+
+.el-statistic__content {
+  color: var(--color-text-primary) !important;
+}
+
+/* PageHeader 页头 */
+.el-page-header {
+  background: transparent !important;
+}
+
+.el-page-header__title {
+  color: var(--color-text-primary) !important;
+}
+
+.el-page-header__content {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Upload 上传 */
+.el-upload {
+  --el-upload-disabled-bg: rgba(0, 0, 0, 0.2) !important;
+}
+
+.el-upload-dragger {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.2) !important;
+}
+
+.el-upload-dragger:hover {
+  border-color: var(--color-primary) !important;
+}
+
+/* Message 消息提示 */
+.el-message {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* MessageBox 弹框 */
+.el-message-box {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.el-message-box__title {
+  color: var(--color-text-primary) !important;
+}
+
+.el-message-box__content {
+  color: var(--color-text-secondary) !important;
+}
+
+/* Notification 通知 */
+.el-notification {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* 颜色选择器 */
+.el-color-picker__trigger {
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* 时间选择器 */
+.el-picker-panel {
+  background: rgba(15, 23, 42, 0.95) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.el-date-table th {
+  color: var(--color-text-muted) !important;
+}
+
+.el-date-table td {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-date-table td.today .el-date-table-cell__text {
+  color: var(--color-primary-light) !important;
+}
+
+/* ==================== 全局文字颜色覆盖 ==================== */
+/* 只对 Element Plus 组件内的文字进行颜色覆盖 */
+.el-dialog__title,
+.el-dialog__body,
+.el-card__header,
+.el-card__body,
+.el-table th,
+.el-table td,
+.el-form-item__label,
+.el-button,
+.el-tag,
+.el-tabs__item,
+.el-descriptions__label,
+.el-descriptions__content,
+.el-empty__description,
+.el-alert__title,
+.el-alert__description,
+.el-statistic__head,
+.el-statistic__content,
+.el-message-box__title,
+.el-message-box__content,
+.breadcrumb-item,
+.el-pagination button,
+.el-pager li,
+.el-select-dropdown__item,
+.el-dropdown-menu__item,
+.el-menu-item,
+.el-list-item {
+  color: var(--color-text-secondary) !important;
+}
+
+.el-dialog__title,
+.el-descriptions__label,
+.el-form-item__label,
+.el-statistic__head {
+  color: var(--color-text-primary) !important;
+}
+
+/* 链接颜色 */
+a, .el-link {
+  color: var(--color-primary-light) !important;
+}

@@ -71,7 +71,8 @@ import {
   User as UserIcon,
   SwitchButton,
   Share,
-  DataAnalysis
+  DataAnalysis,
+  HomeFilled
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUIStore } from '@/stores/ui'
@@ -85,6 +86,7 @@ const uiStore = useUIStore()
 
 // 菜单项
 const menuItems = computed(() => [
+  { path: '/home', title: t('menu.home'), icon: HomeFilled },
   { path: '/chat', title: t('menu.chat'), icon: ChatLineRound },
   { path: '/knowledge', title: t('menu.knowledge'), icon: Document },
   { path: '/graphs', title: t('menu.graph'), icon: Share },

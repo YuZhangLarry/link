@@ -113,6 +113,7 @@ export default {
     saveSuccess: '保存成功'
   },
   menu: {
+    home: '首页',
     chat: '聊天',
     knowledge: '知识库',
     graph: '知识图谱',

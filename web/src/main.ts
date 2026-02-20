@@ -9,6 +9,9 @@ import App from './App.vue'
 import router from './router'
 import { i18n } from './i18n'
 
+// 引入全局样式
+import './component/styles/global.css'
+
 const app = createApp(App)
 
 // 注册所有 Element Plus 图标

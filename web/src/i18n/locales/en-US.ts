@@ -113,6 +113,7 @@ export default {
     saveSuccess: 'Saved successfully'
   },
   menu: {
+    home: 'Home',
     chat: 'Chat',
     knowledge: 'Knowledge',
     graph: 'Knowledge Graph',

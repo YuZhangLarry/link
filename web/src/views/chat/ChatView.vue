@@ -238,7 +238,7 @@
                       <div class="tool-call-card">
                         <div class="tool-name">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3L6.91 6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
                           </svg>
                           <span>{{ step.tool_name }}</span>
                         </div>
@@ -1367,18 +1367,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ==================== 半透明玻璃态样式 ==================== */
 .chat-page {
   display: flex;
   height: 100vh;
-  background: #0f0f0f;
-  color: #e4e4e7;
+  background: transparent;
 }
 
 /* ==================== 侧边栏 ==================== */
 .sidebar {
   width: 260px;
-  background: #1a1a1a;
-  border-right: 1px solid #272727;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
   display: flex;
   flex-direction: column;
   transition: width 0.3s ease;
@@ -1391,7 +1393,7 @@ onMounted(() => {
 
 .sidebar-header {
   padding: 16px;
-  border-bottom: 1px solid #272727;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -1403,7 +1405,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   color: white;
   border: none;
   border-radius: 8px;
@@ -1414,22 +1416,22 @@ onMounted(() => {
 }
 
 .new-chat-btn:hover {
-  background: #2563eb;
+  background: rgba(255, 126, 179, 1);
 }
 
 .collapse-btn {
   padding: 8px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.1);
   border: none;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   border-radius: 6px;
   transition: all 0.2s;
 }
 
 .collapse-btn:hover {
-  background: #272727;
-  color: #a3a3a3;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .sessions-list {
@@ -1447,7 +1449,7 @@ onMounted(() => {
 }
 
 .sessions-list::-webkit-scrollbar-thumb {
-  background: #3f3f3f;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
 
@@ -1464,15 +1466,15 @@ onMounted(() => {
 }
 
 .session-item:hover {
-  background: #272727;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .session-item.active {
-  background: #1e3a5f;
+  background: rgba(255, 126, 179, 0.3);
 }
 
 .session-icon {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.6);
   flex-shrink: 0;
 }
 
@@ -1482,6 +1484,7 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: white;
 }
 
 .delete-btn {
@@ -1489,7 +1492,7 @@ onMounted(() => {
   padding: 4px;
   background: transparent;
   border: none;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.2s;
@@ -1500,7 +1503,7 @@ onMounted(() => {
 }
 
 .delete-btn:hover {
-  background: #ef4444;
+  background: rgba(255, 100, 100, 0.5);
   color: white;
 }
 
@@ -1509,7 +1512,7 @@ onMounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #0f0f0f;
+  background: transparent;
 }
 
 .chat-header {
@@ -1517,7 +1520,10 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
-  border-bottom: 1px solid #272727;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .header-left {
@@ -1529,7 +1535,7 @@ onMounted(() => {
 .mode-tabs {
   display: flex;
   gap: 4px;
-  background: #1a1a1a;
+  background: rgba(0, 0, 0, 0.3);
   padding: 4px;
   border-radius: 10px;
 }
@@ -1543,24 +1549,19 @@ onMounted(() => {
   border: none;
   border-radius: 8px;
   font-size: 14px;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .mode-tab:hover {
-  color: #a3a3a3;
-  background: #272727;
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .mode-tab.active {
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   color: white;
-}
-
-.mode-tab svg {
-  width: 16px;
-  height: 16px;
 }
 
 .header-right {
@@ -1573,10 +1574,10 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(122, 252, 255, 0.15);
+  border: 1px solid rgba(122, 252, 255, 0.3);
   border-radius: 8px;
-  color: #60a5fa;
+  color: #7afcff;
   font-size: 13px;
 }
 
@@ -1585,38 +1586,38 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: #272727;
-  border: 1px solid #3f3f3f;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .rag-toggle-btn:hover {
-  background: #3f3f3f;
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .rag-toggle-btn.active {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
+  border-color: rgba(255, 126, 179, 0.8);
   color: white;
 }
 
 .settings-btn {
   padding: 8px;
-  background: #272727;
-  border: 1px solid #3f3f3f;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
-  color: #a3a3a3a;
+  color: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .settings-btn:hover {
-  background: #3f3f3f;
-  color: #e4e4e7;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
 }
 
 /* ==================== 消息区域 ==================== */
@@ -1624,6 +1625,7 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+  background: transparent;
 }
 
 .messages-area::-webkit-scrollbar {
@@ -1635,7 +1637,7 @@ onMounted(() => {
 }
 
 .messages-area::-webkit-scrollbar-thumb {
-  background: #3f3f3f;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 3px;
 }
 
@@ -1645,16 +1647,16 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .empty-icon {
-  color: #3f3f3f;
+  color: rgba(255, 255, 255, 0.3);
   margin-bottom: 16px;
 }
 
 .empty-icon.agent-icon {
-  color: #3b82f6;
+  color: rgba(122, 252, 255, 0.6);
 }
 
 .empty-state p {
@@ -1664,7 +1666,7 @@ onMounted(() => {
 
 .empty-state .hint {
   font-size: 13px;
-  color: #525252;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .messages-list {
@@ -1678,15 +1680,15 @@ onMounted(() => {
   gap: 8px;
   padding: 10px 16px;
   margin-bottom: 16px;
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: rgba(122, 252, 255, 0.15);
+  border: 1px solid rgba(122, 252, 255, 0.3);
   border-radius: 10px;
-  color: #60a5fa;
+  color: #7afcff;
   font-size: 13px;
 }
 
 .rag-context-banner .sources {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
   margin-left: auto;
 }
 
@@ -1718,16 +1720,17 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
+  color: white;
 }
 
 .message.assistant .message-avatar {
-  background: #272727;
+  background: rgba(122, 252, 255, 0.5);
 }
 
 .message-content {
@@ -1750,19 +1753,22 @@ onMounted(() => {
 }
 
 .message.user .message-text {
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   color: white;
   border-bottom-right-radius: 4px;
 }
 
 .message.assistant .message-text {
-  background: #1a1a1a;
-  border: 1px solid #272727;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom-left-radius: 4px;
+  color: white;
 }
 
 .message.streaming .message-text {
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid rgba(255, 126, 179, 0.8);
 }
 
 /* Markdown 样式 */
@@ -1775,7 +1781,7 @@ onMounted(() => {
 }
 
 .message-text :deep(pre) {
-  background: #0d0d0d;
+  background: rgba(0, 0, 0, 0.4);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
@@ -1783,18 +1789,18 @@ onMounted(() => {
 }
 
 .message-text :deep(code) {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(122, 252, 255, 0.2);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 13px;
-  color: #60a5fa;
+  color: #7afcff;
 }
 
 .message-text :deep(pre code) {
   background: transparent;
   padding: 0;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .message-actions {
@@ -1806,26 +1812,26 @@ onMounted(() => {
 
 .message-time {
   font-size: 12px;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .action-btn {
   padding: 4px 8px;
   background: transparent;
   border: none;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.4);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .action-btn:hover {
-  background: #272727;
-  color: #e4e4e7;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .streaming-indicator {
-  color: #3b82f6;
+  color: rgba(255, 126, 179, 0.8);
   font-size: 13px;
 }
 
@@ -1863,7 +1869,7 @@ onMounted(() => {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  background: rgba(122, 252, 255, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1876,17 +1882,17 @@ onMounted(() => {
 
 @keyframes glow {
   0%, 100% {
-    box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 5px rgba(122, 252, 255, 0.5);
   }
   50% {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+    box-shadow: 0 0 20px rgba(122, 252, 255, 0.8);
   }
 }
 
 .agent-label {
   font-weight: 600;
   font-size: 14px;
-  color: #a3a3a3;
+  color: white;
 }
 
 /* 思考步骤 */
@@ -1897,8 +1903,10 @@ onMounted(() => {
 }
 
 .step-item {
-  background: #1a1a1a;
-  border: 1px solid #272727;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   overflow: hidden;
   animation: slideIn 0.3s ease;
@@ -1916,21 +1924,21 @@ onMounted(() => {
 }
 
 .step-item.action {
-  border-left: 3px solid #f59e0b;
+  border-left: 3px solid #ffd97d;
 }
 
 .step-item.thought {
-  border-left: 3px solid #8b5cf6;
+  border-left: 3px solid #b8b8ff;
 }
 
 .step-item.complete {
-  border: 1px solid #22c55e;
-  background: rgba(34, 197, 94, 0.05);
+  border: 1px solid #7affc3;
+  background: rgba(122, 255, 195, 0.1);
 }
 
 .step-item.error {
-  border: 1px solid #ef4444;
-  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid #ff7e7e;
+  background: rgba(255, 126, 126, 0.1);
 }
 
 .step-item.active {
@@ -1939,8 +1947,8 @@ onMounted(() => {
 }
 
 @keyframes borderPulse {
-  0%, 100% { border-color: #3b82f6; }
-  50% { border-color: #60a5fa; }
+  0%, 100% { border-color: rgba(255, 126, 179, 0.8); }
+  50% { border-color: rgba(255, 126, 179, 0.4); }
 }
 
 .step-header {
@@ -1948,74 +1956,74 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: #272727;
+  background: rgba(0, 0, 0, 0.2);
   font-size: 12px;
 }
 
 .step-header.complete {
   background: transparent;
-  color: #22c55e;
+  color: #7affc3;
 }
 
 .step-header.error {
   background: transparent;
-  color: #ef4444;
+  color: #ff7e7e;
 }
 
 .step-number {
   font-weight: 600;
-  color: #e4e4e7;
+  color: white;
 }
 
 .step-type {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .step-type.agent-call {
-  color: #8b5cf6;
+  color: #b8b8ff;
 }
 
 .step-type.search {
-  color: #06b6d4;
+  color: #7afcff;
 }
 
 .step-type.plan {
-  color: #eab308;
+  color: #ffd97d;
 }
 
 .step-type.analysis {
-  color: #f97316;
+  color: #ffb3d9;
 }
 
 .step-type.review {
-  color: #ef4444;
+  color: #ff7e7e;
 }
 
 .step-type.synthesis {
-  color: #22c55e;
+  color: #7affc3;
 }
 
 .step-type.retrieval {
-  color: #14b8a6;
+  color: #7afcff;
 }
 
 .step-stage {
   margin-left: auto;
-  color: #3b82f6;
+  color: rgba(255, 126, 179, 0.9);
   font-size: 11px;
   padding: 2px 6px;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(255, 126, 179, 0.15);
   border-radius: 4px;
 }
 
 .step-time {
   margin-left: auto;
-  color: #525252;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .step-status {
   margin-left: auto;
-  color: #3b82f6;
+  color: rgba(255, 126, 179, 0.9);
 }
 
 .step-content {
@@ -2027,17 +2035,17 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 13px;
 }
 
 .step-thought svg {
   flex-shrink: 0;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .tool-call-card {
-  background: #0f0f0f;
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   padding: 12px;
 }
@@ -2047,7 +2055,7 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   font-weight: 600;
-  color: #f59e0b;
+  color: #ffd97d;
   margin-bottom: 10px;
 }
 
@@ -2060,14 +2068,14 @@ onMounted(() => {
 }
 
 .param-label {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .param-value {
-  background: #272727;
+  background: rgba(0, 0, 0, 0.3);
   padding: 4px 8px;
   border-radius: 4px;
-  color: #60a5fa;
+  color: #7afcff;
   font-family: 'Consolas', monospace;
   font-size: 11px;
 }
@@ -2077,16 +2085,16 @@ onMounted(() => {
 }
 
 .output-label {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
   margin-right: 6px;
 }
 
 .output-value {
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .thought-content {
-  color: #e4e4e7;
+  color: white;
   font-size: 14px;
   line-height: 1.6;
 }
@@ -2102,7 +2110,7 @@ onMounted(() => {
 /* Agent 特殊步骤类型样式 */
 .agent-call-card,
 .search-card {
-  background: #0f0f0f;
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 8px;
   padding: 12px;
 }
@@ -2119,7 +2127,7 @@ onMounted(() => {
 
 .agent-name {
   font-weight: 600;
-  color: #8b5cf6;
+  color: #b8b8ff;
   margin-bottom: 4px;
 }
 
@@ -2131,7 +2139,7 @@ onMounted(() => {
 
 .search-name {
   font-weight: 600;
-  color: #06b6d4;
+  color: #7afcff;
 }
 
 .plan-content,
@@ -2140,7 +2148,7 @@ onMounted(() => {
 .synthesis-content,
 .retrieval-content,
 .default-content {
-  color: #e4e4e7;
+  color: white;
   font-size: 14px;
   line-height: 1.6;
 }
@@ -2164,15 +2172,17 @@ onMounted(() => {
 }
 
 .related-tool {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.4);
   font-size: 11px;
   font-style: italic;
 }
 
 /* 最终答案 */
 .agent-answer {
-  background: #1a1a1a;
-  border: 1px solid #272727;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
   padding: 16px;
   margin-top: 8px;
@@ -2181,14 +2191,14 @@ onMounted(() => {
 .answer-label {
   font-size: 12px;
   font-weight: 600;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 10px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .answer-content {
-  color: #e4e4e7;
+  color: white;
   font-size: 14px;
   line-height: 1.7;
 }
@@ -2202,7 +2212,7 @@ onMounted(() => {
 }
 
 .answer-content :deep(pre) {
-  background: #0d0d0d;
+  background: rgba(0, 0, 0, 0.4);
   padding: 12px;
   border-radius: 8px;
   overflow-x: auto;
@@ -2210,31 +2220,36 @@ onMounted(() => {
 }
 
 .answer-content :deep(code) {
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(122, 252, 255, 0.2);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 13px;
-  color: #60a5fa;
+  color: #7afcff;
 }
 
 .answer-content :deep(pre code) {
   background: transparent;
   padding: 0;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* ==================== 输入区域 ==================== */
 .input-area {
   padding: 16px 24px;
-  border-top: 1px solid #272727;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .input-container {
   max-width: 800px;
   margin: 0 auto;
-  background: #1a1a1a;
-  border: 1px solid #3f3f3f;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 16px;
   padding: 12px 16px;
   display: flex;
@@ -2246,7 +2261,7 @@ onMounted(() => {
   flex: 1;
   background: transparent;
   border: none;
-  color: #e4e4e7;
+  color: white;
   font-size: 15px;
   line-height: 1.5;
   resize: none;
@@ -2255,7 +2270,7 @@ onMounted(() => {
 }
 
 .message-input::placeholder {
-  color: #737373;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .message-input:disabled {
@@ -2270,7 +2285,7 @@ onMounted(() => {
 
 .char-count {
   font-size: 12px;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .send-btn {
@@ -2279,7 +2294,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -2287,11 +2302,11 @@ onMounted(() => {
 }
 
 .send-btn:hover:not(:disabled) {
-  background: #2563eb;
+  background: rgba(255, 126, 179, 1);
 }
 
 .send-btn:disabled {
-  background: #272727;
+  background: rgba(255, 255, 255, 0.1);
   cursor: not-allowed;
 }
 
@@ -2299,7 +2314,9 @@ onMounted(() => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2307,8 +2324,10 @@ onMounted(() => {
 }
 
 .modal-content {
-  background: #1a1a1a;
-  border: 1px solid #3f3f3f;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 16px;
   width: 90%;
   max-width: 500px;
@@ -2323,28 +2342,29 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid #272727;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .modal-header h2 {
   font-size: 18px;
   font-weight: 600;
   margin: 0;
+  color: white;
 }
 
 .close-btn {
   padding: 4px;
   background: transparent;
   border: none;
-  color: #737373;
+  color: rgba(255, 255, 255, 0.6);
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .close-btn:hover {
-  background: #272727;
-  color: #e4e4e7;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 
 .modal-body {
@@ -2358,7 +2378,7 @@ onMounted(() => {
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid #272727;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .setting-section {
@@ -2372,7 +2392,7 @@ onMounted(() => {
 .setting-section h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.7);
   margin: 0 0 12px 0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -2391,22 +2411,22 @@ onMounted(() => {
 
 .setting-row > label {
   font-size: 14px;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .setting-select {
   padding: 8px 12px;
-  background: #0f0f0f;
-  border: 1px solid #3f3f3f;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: white;
   font-size: 14px;
   cursor: pointer;
 }
 
 .setting-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: rgba(255, 126, 179, 0.8);
 }
 
 .setting-slider {
@@ -2418,7 +2438,7 @@ onMounted(() => {
 
 .setting-slider::-webkit-slider-runnable-track {
   height: 4px;
-  background: #3f3f3f;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 2px;
 }
 
@@ -2426,7 +2446,7 @@ onMounted(() => {
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   border-radius: 50%;
   cursor: pointer;
   margin-top: -6px;
@@ -2436,7 +2456,7 @@ onMounted(() => {
   min-width: 32px;
   text-align: right;
   font-size: 13px;
-  color: #a3a3a3;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .checkbox-group {
@@ -2451,19 +2471,20 @@ onMounted(() => {
   gap: 10px;
   cursor: pointer;
   padding: 8px 12px;
-  background: #1a1a1a;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   transition: background 0.2s;
 }
 
 .checkbox-item:hover {
-  background: #272727;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .checkbox-item input[type="checkbox"] {
   width: 18px;
   height: 18px;
   cursor: pointer;
+  accent-color: rgba(255, 126, 179, 0.8);
 }
 
 .checkbox-item input[type="checkbox"]:disabled {
@@ -2473,7 +2494,7 @@ onMounted(() => {
 
 .checkbox-item span {
   font-size: 14px;
-  color: #e4e4e7;
+  color: white;
 }
 
 .btn-primary, .btn-secondary {
@@ -2486,23 +2507,23 @@ onMounted(() => {
 }
 
 .btn-primary {
-  background: #3b82f6;
+  background: rgba(255, 126, 179, 0.8);
   border: none;
   color: white;
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: rgba(255, 126, 179, 1);
 }
 
 .btn-secondary {
   background: transparent;
-  border: 1px solid #3f3f3f;
-  color: #a3a3a3;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .btn-secondary:hover {
-  background: #272727;
-  color: #e4e4e7;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
 }
 </style>

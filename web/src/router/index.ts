@@ -13,8 +13,14 @@ const routes: RouteRecordRaw[] = [
     name: 'Platform',
     component: () => import('@/views/platform/index.vue'),
     meta: { requiresAuth: true },
-    redirect: '/chat',
+    redirect: '/home',
     children: [
+      {
+        path: '/home',
+        name: 'Home',
+        component: () => import('@/views/home/HomeView.vue'),
+        meta: { title: '首页' }
+      },
       {
         path: '/chat',
         name: 'Chat',
@@ -74,7 +80,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
-    redirect: '/chat'
+    redirect: '/home'
   }
 ]
 
