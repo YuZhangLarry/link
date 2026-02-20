@@ -1,0 +1,63 @@
+# 实体提取提示词模板
+templates:
+  - id: "entity_extraction"
+    name: "实体提取格式"
+    description: "从文档中提取实体（返回Neo4j GraphNode格式）"
+    content: |
+      # 任务说明
+      你是一个专业的知识图谱构建助手。请仔细阅读以下文档内容，从中提取出所有相关实体。
+
+      # 文档内容
+      {{document}}
+
+      # 实体类型定义
+      请重点关注以下类型的实体：
+      - **Person**: 人员、角色、职位等
+      - **Company**: 公司名称、机构等
+      - **Product**: 产品名称、服务等
+      - **Location**: 地址、位置、地区等
+      - **Time**: 日期、时间段等
+      - **Technology**: 编程语言、框架、工具等
+      - **Concept**: 概念、方法论等
+      - **Department**: 部门、组织单元等
+      - **Question**: 问题、疑问等
+      - **Module**: 模块、组件等
+      - **Other**: 任何其他重要的名词或概念
+
+      # 提取要求
+      1. **完整性**: 尽可能多地识别文档中提到的实体
+      2. **准确性**: 确保提取的实体信息准确无误
+      3. **结构化**: 按照实体类型分类整理
+      4. **唯一性**: 对于重复出现的实体，只提取一次
+      5. **原始表述**: 实体名称使用文档中的原始表述
+
+      # 输出格式要求
+
+      **重要**：
+      1. 只返回JSON格式，不要添加任何其他文字说明
+      2. 不要使用markdown代码块标记（如```json）
+      3. 确保返回的是有效的JSON格式
+      4. 只返回nodes数组，不要返回其他字段
+
+      请严格按照以下JSON格式输出：
+
+      {"nodes":[{"id":"1","name":"实体名称","title":"显示标题","entity_type":"Concept","attributes":["属性1","属性2"],"chunks":[]}]}
+
+      # 字段说明
+      - **id**: 实体的唯一标识符，可以使用数字ID如 "1", "2" 等
+      - **name**: 实体的名称，使用文档中的原始表述
+      - **title**: 实体的显示标题，通常与name相同
+      - **entity_type**: 实体类型，必须从以下类型中选择：Person、Company、Product、Location、Time、Technology、Concept、Department、Question、Module、Other
+      - **attributes**: 实体的属性列表，如标签、特征等，如果没有属性可以返回空数组
+      - **chunks**: 识别到该实体的文档块ID列表，始终返回空数组[]（由系统后续填充）
+
+      # 示例
+
+      示例输入："人工智能是计算机科学的一个分支。深度学习基于神经网络。"
+      示例输出：{"nodes":[{"id":"1","name":"人工智能","title":"人工智能","entity_type":"Concept","attributes":["技术","计算机科学"],"chunks":[]},{"id":"2","name":"深度学习","title":"深度学习","entity_type":"Technology","attributes":["机器学习"],"chunks":[]},{"id":"3","name":"神经网络","title":"神经网络","entity_type":"Technology","attributes":["算法"],"chunks":[]}]}
+
+      # 注意事项
+      - 如果文档中没有明确的实体信息，请返回：{"nodes":[]}
+      - 确保返回的是纯JSON格式，不要有任何前缀或后缀文字
+      - 不要使用markdown代码块
+      - entity_type必须是以下之一：Person、Company、Product、Location、Time、Technology、Concept、Department、Question、Module、Other

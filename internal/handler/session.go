@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"link/internal/middleware"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
@@ -43,8 +44,16 @@ func (h *SessionHandler) CreateSession(c *gin.Context) {
 		return
 	}
 
-	// 写死用户ID为1，便于测试
-	userID := int64(1)
+	// 从认证中间件获取用户ID
+	userID, ok := middleware.GetUserID(c)
+	if !ok || userID == 0 {
+		log.Printf("❌ [CreateSession] 未找到用户ID")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"code":    -1,
+			"message": "未授权",
+		})
+		return
+	}
 	log.Printf("✅ [CreateSession] 用户ID: %d, 标题: %s", userID, req.Title)
 
 	resp, err := h.sessionService.CreateSession(c.Request.Context(), userID, &req)
@@ -58,7 +67,7 @@ func (h *SessionHandler) CreateSession(c *gin.Context) {
 		return
 	}
 
-	log.Printf("✅ [CreateSession] 创建成功: ID=%d", resp.ID)
+	log.Printf("✅ [CreateSession] 创建成功: ID=%s", resp.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "成功",
@@ -72,12 +81,12 @@ func (h *SessionHandler) CreateSession(c *gin.Context) {
 // @Tags 会话
 // @Accept json
 // @Produce json
-// @Param id path int true "会话ID"
+// @Param id path string true "会话ID"
 // @Success 200 {object} Response{data=types.SessionResponse}
 // @Router /api/v1/sessions/{id} [get]
 func (h *SessionHandler) GetSessionByID(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		log.Printf("❌ [GetSessionByID] 参数错误: %v", err)
@@ -89,7 +98,7 @@ func (h *SessionHandler) GetSessionByID(c *gin.Context) {
 		return
 	}
 
-	log.Printf("📖 [GetSessionByID] 查询会话: ID=%d", uri.ID)
+	log.Printf("📖 [GetSessionByID] 查询会话: ID=%s", uri.ID)
 
 	resp, err := h.sessionService.GetSessionByID(c.Request.Context(), uri.ID)
 	if err != nil {
@@ -115,12 +124,12 @@ func (h *SessionHandler) GetSessionByID(c *gin.Context) {
 // @Tags 会话
 // @Accept json
 // @Produce json
-// @Param id path int true "会话ID"
+// @Param id path string true "会话ID"
 // @Success 200 {object} Response{data=types.SessionDetailResponse}
 // @Router /api/v1/sessions/{id}/detail [get]
 func (h *SessionHandler) GetSessionDetail(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -144,7 +153,10 @@ func (h *SessionHandler) GetSessionDetail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"code":    0,
 		"message": "成功",
-		"data":    resp,
+		"data": gin.H{
+			"session":  resp.Session,
+			"messages": resp.Messages,
+		},
 	})
 }
 
@@ -172,12 +184,8 @@ func (h *SessionHandler) ListSessions(c *gin.Context) {
 		return
 	}
 
-	// 写死用户ID为1，便于测试
-	if req.UserID == 0 {
-		req.UserID = 1
-	}
-
-	log.Printf("📋 [ListSessions] 查询会话列表: UserID=%d, Page=%d, Size=%d", req.UserID, req.Page, req.Size)
+	// 用户ID从认证中间件获取
+	log.Printf("📋 [ListSessions] 查询会话列表: Page=%d, Size=%d", req.Page, req.Size)
 
 	resp, err := h.sessionService.ListSessions(c.Request.Context(), &req)
 	if err != nil {
@@ -204,13 +212,13 @@ func (h *SessionHandler) ListSessions(c *gin.Context) {
 // @Tags 会话
 // @Accept json
 // @Produce json
-// @Param id path int true "会话ID"
+// @Param id path string true "会话ID"
 // @Param request body types.UpdateSessionRequest true "更新会话请求"
 // @Success 200 {object} Response{data=types.SessionResponse}
 // @Router /api/v1/sessions/{id} [put]
 func (h *SessionHandler) UpdateSession(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -254,12 +262,12 @@ func (h *SessionHandler) UpdateSession(c *gin.Context) {
 // @Tags 会话
 // @Accept json
 // @Produce json
-// @Param id path int true "会话ID"
+// @Param id path string true "会话ID"
 // @Success 200 {object} Response
 // @Router /api/v1/sessions/{id} [delete]
 func (h *SessionHandler) DeleteSession(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -270,7 +278,7 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		return
 	}
 
-	log.Printf("🗑️ [DeleteSession] 删除会话: ID=%d", uri.ID)
+	log.Printf("🗑️ [DeleteSession] 删除会话: ID=%s", uri.ID)
 
 	err := h.sessionService.DeleteSession(c.Request.Context(), uri.ID)
 	if err != nil {
@@ -296,12 +304,12 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 // @Tags 会话
 // @Accept json
 // @Produce json
-// @Param id path int true "会话ID"
+// @Param id path string true "会话ID"
 // @Success 200 {object} Response
 // @Router /api/v1/sessions/{id}/archive [post]
 func (h *SessionHandler) ArchiveSession(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -334,12 +342,12 @@ func (h *SessionHandler) ArchiveSession(c *gin.Context) {
 // @Tags 会话
 // @Accept json
 // @Produce json
-// @Param id path int true "会话ID"
+// @Param id path string true "会话ID"
 // @Success 200 {object} Response
 // @Router /api/v1/sessions/{id}/activate [post]
 func (h *SessionHandler) ActivateSession(c *gin.Context) {
 	var uri struct {
-		ID int64 `uri:"id" binding:"required"`
+		ID string `uri:"id" binding:"required"`
 	}
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{

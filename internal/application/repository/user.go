@@ -22,11 +22,11 @@ func NewUserRepository(db *sql.DB) interfaces.UserRepository {
 // Create 创建用户
 func (r *userRepository) Create(ctx context.Context, user *types.User) error {
 	query := `
-		INSERT INTO users (username, email, password_hash, avatar, status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+		INSERT INTO users (tenant_id, username, email, password_hash, avatar, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
 	`
 	result, err := r.db.ExecContext(ctx, query,
-		user.Username, user.Email, user.PasswordHash, user.Avatar, user.Status,
+		user.TenantID, user.Username, user.Email, user.PasswordHash, user.Avatar, user.Status,
 	)
 	if err != nil {
 		return fmt.Errorf("创建用户失败: %w", err)
@@ -44,13 +44,13 @@ func (r *userRepository) Create(ctx context.Context, user *types.User) error {
 // FindByID 根据ID查找用户
 func (r *userRepository) FindByID(ctx context.Context, id int64) (*types.User, error) {
 	query := `
-		SELECT id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
+		SELECT id, tenant_id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
 		FROM users
-		WHERE id = ?
+		WHERE id = ? AND deleted_at IS NULL
 	`
 	user := &types.User{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
+		&user.ID, &user.TenantID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.Avatar, &user.Status, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 	)
 	if err == sql.ErrNoRows {
@@ -62,16 +62,37 @@ func (r *userRepository) FindByID(ctx context.Context, id int64) (*types.User, e
 	return user, nil
 }
 
-// FindByEmail 根据邮箱查找用户
-func (r *userRepository) FindByEmail(ctx context.Context, email string) (*types.User, error) {
+// FindByEmail 根据邮箱查找用户（需要租户ID）
+func (r *userRepository) FindByEmail(ctx context.Context, tenantID int64, email string) (*types.User, error) {
 	query := `
-		SELECT id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
+		SELECT id, tenant_id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
 		FROM users
-		WHERE email = ?
+		WHERE tenant_id = ? AND email = ? AND deleted_at IS NULL
+	`
+	user := &types.User{}
+	err := r.db.QueryRowContext(ctx, query, tenantID, email).Scan(
+		&user.ID, &user.TenantID, &user.Username, &user.Email, &user.PasswordHash,
+		&user.Avatar, &user.Status, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("用户不存在")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询用户失败: %w", err)
+	}
+	return user, nil
+}
+
+// FindByEmailOnly 仅根据邮箱查找用户（不指定租户，用于登录时自动获取租户ID）
+func (r *userRepository) FindByEmailOnly(ctx context.Context, email string) (*types.User, error) {
+	query := `
+		SELECT id, tenant_id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
+		FROM users
+		WHERE email = ? AND deleted_at IS NULL
 	`
 	user := &types.User{}
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
+		&user.ID, &user.TenantID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.Avatar, &user.Status, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 	)
 	if err == sql.ErrNoRows {
@@ -83,16 +104,16 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*types.
 	return user, nil
 }
 
-// FindByUsername 根据用户名查找用户
-func (r *userRepository) FindByUsername(ctx context.Context, username string) (*types.User, error) {
+// FindByUsername 根据用户名查找用户（需要租户ID）
+func (r *userRepository) FindByUsername(ctx context.Context, tenantID int64, username string) (*types.User, error) {
 	query := `
-		SELECT id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
+		SELECT id, tenant_id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
 		FROM users
-		WHERE username = ?
+		WHERE tenant_id = ? AND username = ? AND deleted_at IS NULL
 	`
 	user := &types.User{}
-	err := r.db.QueryRowContext(ctx, query, username).Scan(
-		&user.ID, &user.Username, &user.Email, &user.PasswordHash,
+	err := r.db.QueryRowContext(ctx, query, tenantID, username).Scan(
+		&user.ID, &user.TenantID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.Avatar, &user.Status, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 	)
 	if err == sql.ErrNoRows {
@@ -140,12 +161,12 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-// List 分页查询用户列表
-func (r *userRepository) List(ctx context.Context, page, pageSize int) ([]*types.User, int64, error) {
+// List 分页查询用户列表（需要租户ID）
+func (r *userRepository) List(ctx context.Context, tenantID int64, page, pageSize int) ([]*types.User, int64, error) {
 	// 查询总数
 	var total int64
-	countQuery := `SELECT COUNT(*) FROM users`
-	err := r.db.QueryRowContext(ctx, countQuery).Scan(&total)
+	countQuery := `SELECT COUNT(*) FROM users WHERE tenant_id = ? AND deleted_at IS NULL`
+	err := r.db.QueryRowContext(ctx, countQuery, tenantID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询用户总数失败: %w", err)
 	}
@@ -153,12 +174,13 @@ func (r *userRepository) List(ctx context.Context, page, pageSize int) ([]*types
 	// 分页查询
 	offset := (page - 1) * pageSize
 	query := `
-		SELECT id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
+		SELECT id, tenant_id, username, email, password_hash, avatar, status, created_at, updated_at, last_login_at
 		FROM users
+		WHERE tenant_id = ? AND deleted_at IS NULL
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
 	`
-	rows, err := r.db.QueryContext(ctx, query, pageSize, offset)
+	rows, err := r.db.QueryContext(ctx, query, tenantID, pageSize, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查询用户列表失败: %w", err)
 	}
@@ -168,7 +190,7 @@ func (r *userRepository) List(ctx context.Context, page, pageSize int) ([]*types
 	for rows.Next() {
 		user := &types.User{}
 		err := rows.Scan(
-			&user.ID, &user.Username, &user.Email, &user.PasswordHash,
+			&user.ID, &user.TenantID, &user.Username, &user.Email, &user.PasswordHash,
 			&user.Avatar, &user.Status, &user.CreatedAt, &user.UpdatedAt, &user.LastLoginAt,
 		)
 		if err != nil {
@@ -178,6 +200,11 @@ func (r *userRepository) List(ctx context.Context, page, pageSize int) ([]*types
 	}
 
 	return users, total, nil
+}
+
+// FindByTenantID 根据租户ID查找用户列表
+func (r *userRepository) FindByTenantID(ctx context.Context, tenantID int64, page, pageSize int) ([]*types.User, int64, error) {
+	return r.List(ctx, tenantID, page, pageSize)
 }
 
 // refreshTokenRepository 刷新Token数据访问实现

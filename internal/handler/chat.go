@@ -9,11 +9,395 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"link/internal/application/service"
+	"link/internal/application/service/rag"
 	"link/internal/middleware"
 	"link/internal/models/chat"
 	"link/internal/types"
 	"link/internal/types/interfaces"
 )
+
+// RAGChatHandler RAG 聊天处理器
+type RAGChatHandler struct {
+	ragChatService *rag.RAGChatService
+	sessionService interfaces.SessionService
+	sessionRepo    interfaces.SessionRepository
+	messageService interfaces.MessageService
+}
+
+// NewRAGChatHandler 创建 RAG 聊天处理器
+func NewRAGChatHandler(
+	ragChatService *rag.RAGChatService,
+	sessionService interfaces.SessionService,
+	sessionRepo interfaces.SessionRepository,
+	messageService interfaces.MessageService,
+) *RAGChatHandler {
+	return &RAGChatHandler{
+		ragChatService: ragChatService,
+		sessionService: sessionService,
+		sessionRepo:    sessionRepo,
+		messageService: messageService,
+	}
+}
+
+// ChatWithRAG 带 RAG 的聊天接口
+// @Summary 带 RAG 的聊天对话
+// @Description 发送聊天消息并获取回复，支持 RAG 检索
+// @Tags 聊天
+// @Accept json
+// @Produce json
+// @Param request body types.ChatRequest true "聊天请求"
+// @Success 200 {object} Response{data=types.ChatResponse}
+// @Router /api/v1/chat/rag [post]
+func (h *RAGChatHandler) ChatWithRAG(c *gin.Context) {
+	var req types.ChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    -1,
+			"message": "请求参数错误",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// 如果设置了流式，返回错误
+	if req.Stream {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    -1,
+			"message": "流式聊天请使用 /api/v1/chat/rag/stream 接口",
+		})
+		return
+	}
+
+	// 获取用户ID
+	userID := h.getUserID(c)
+
+	// 获取或创建会话ID
+	sessionID := h.getSessionIDWithRAG(c, req, userID)
+
+	// 保存用户消息
+	h.saveUserMessage(c.Request.Context(), sessionID, &req)
+
+	// 执行聊天
+	resp, err := h.ragChatService.Chat(c.Request.Context(), &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    -1,
+			"message": "聊天失败",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// 保存 AI 回复
+	h.saveAssistantMessage(c.Request.Context(), sessionID, resp)
+
+	c.JSON(http.StatusOK, gin.H{
+		"code":       0,
+		"message":    "成功",
+		"data":       resp,
+		"session_id": sessionID,
+	})
+}
+
+// ChatStreamWithRAG 带 RAG 的流式聊天接口
+// @Summary 带 RAG 的流式聊天
+// @Description 发送聊天消息并以流式方式获取回复，支持 RAG 检索
+// @Tags 聊天
+// @Accept json
+// @Produce text/event-stream
+// @Param request body types.ChatRequest true "聊天请求"
+// @Router /api/v1/chat/rag/stream [post]
+func (h *RAGChatHandler) ChatStreamWithRAG(c *gin.Context) {
+	log.Printf("🤖 [RAGChatStream] 收到流式聊天请求")
+
+	var req types.ChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("❌ [RAGChatStream] 参数错误: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":    -1,
+			"message": "请求参数错误",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// 强制设置流式模式
+	req.Stream = true
+
+	// 获取用户ID
+	userID := h.getUserID(c)
+	log.Printf("✅ [RAGChatStream] 用户ID: %d, 内容: %s", userID, req.Content)
+
+	// 获取或创建会话ID
+	sessionID := h.getSessionIDWithRAG(c, req, userID)
+	log.Printf("✅ [RAGChatStream] 会话ID: %s", sessionID)
+
+	// 保存用户消息
+	h.saveUserMessage(c.Request.Context(), sessionID, &req)
+
+	log.Printf("📡 [RAGChatStream] 调用 RAG 聊天服务...")
+	eventChan, err := h.ragChatService.ChatStream(c.Request.Context(), &req)
+	if err != nil {
+		log.Printf("❌ [RAGChatStream] 调用失败: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"code":    -1,
+			"message": "流式聊天失败",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	log.Printf("✅ [RAGChatStream] 开始流式响应...")
+	// 使用SSE写入器发送流式响应，并保存完整的 AI 回复
+	h.handleStreamWithSave(c.Request.Context(), c, sessionID, eventChan)
+	log.Printf("✅ [RAGChatStream] 流式响应完成")
+}
+
+// getSessionIDWithRAG 获取或创建会话ID（支持 RAG 配置绑定）
+func (h *RAGChatHandler) getSessionIDWithRAG(c *gin.Context, req types.ChatRequest, userID int64) string {
+	// 优先从请求体获取会话ID
+	if req.SessionID != "" {
+		log.Printf("📌 [getSessionIDWithRAG] 从请求体获取会话ID: %s", req.SessionID)
+		// 如果请求携带了 RAG 配置，更新到 retrieval_settings 表
+		if req.RAGConfig != nil {
+			h.updateSessionRAGConfig(c.Request.Context(), req.SessionID, req.RAGConfig)
+		}
+		return req.SessionID
+	}
+
+	// 其次尝试从请求头获取会话ID（兼容旧版）
+	if sessionID := c.GetHeader("X-Session-ID"); sessionID != "" {
+		log.Printf("📌 [getSessionIDWithRAG] 从请求头获取会话ID: %s", sessionID)
+		// 如果请求携带了 RAG 配置，更新到 retrieval_settings 表
+		if req.RAGConfig != nil {
+			h.updateSessionRAGConfig(c.Request.Context(), sessionID, req.RAGConfig)
+		}
+		return sessionID
+	}
+
+	// 如果没有会话ID，创建新会话
+	log.Printf("➕ [getSessionIDWithRAG] 创建新会话...")
+	session, err := h.sessionService.CreateSession(c.Request.Context(), userID, &types.CreateSessionRequest{
+		Title:       generateSessionTitle(req.Content),
+		Description: "自动创建的会话",
+		RAGConfig:   req.RAGConfig, // 直接传递 RAG 配置
+	})
+	if err != nil {
+		log.Printf("❌ [getSessionIDWithRAG] 创建会话失败: %v", err)
+		return "" // 创建失败返回空字符串
+	}
+
+	log.Printf("✅ [getSessionIDWithRAG] 新会话创建成功: ID=%s, TenantID=%d, UserID=%d", session.ID, session.TenantID, session.UserID)
+	return session.ID
+}
+
+// updateSessionRAGConfig 更新会话的 RAG 配置
+func (h *RAGChatHandler) updateSessionRAGConfig(ctx context.Context, sessionID string, ragConfig *types.RAGConfig) {
+	if ragConfig == nil {
+		return
+	}
+
+	// 获取租户ID
+	tenantID := getTenantIDFromContext(ctx)
+
+	err := h.ragChatService.SaveRAGConfigToSession(ctx, sessionID, ragConfig, tenantID)
+	if err != nil {
+		log.Printf("⚠️ [updateSessionRAGConfig] 保存 RAG 配置失败: %v", err)
+	} else {
+		log.Printf("✅ [updateSessionRAGConfig] RAG 配置已保存到 retrieval_settings: %s", sessionID)
+	}
+}
+
+// loadSessionRAGConfig 从会话加载 RAG 配置
+func (h *RAGChatHandler) loadSessionRAGConfig(ctx context.Context, sessionID string) *types.RAGConfig {
+	if sessionID == "" {
+		return nil
+	}
+
+	ragConfig, err := h.ragChatService.GetRAGConfigFromSession(ctx, sessionID)
+	if err != nil {
+		log.Printf("⚠️ [loadSessionRAGConfig] 加载 RAG 配置失败: %v", err)
+		return nil
+	}
+
+	return ragConfig
+}
+
+// ========================================
+// RAGChatHandler 辅助方法
+// ========================================
+
+// getUserID 获取用户ID
+func (h *RAGChatHandler) getUserID(c *gin.Context) int64 {
+	if userID, exists := middleware.GetUserID(c); exists {
+		log.Printf("🔑 [getUserID] 从中间件获取用户ID: %d", userID)
+		return userID
+	}
+	log.Printf("🔑 [getUserID] 使用默认用户ID: 1")
+	return 1 // 默认用户ID
+}
+
+// saveUserMessage 保存用户消息
+func (h *RAGChatHandler) saveUserMessage(ctx context.Context, sessionID string, req *types.ChatRequest) {
+	if sessionID == "" {
+		log.Printf("⚠️ [saveUserMessage] sessionID 为空，跳过保存")
+		return
+	}
+
+	log.Printf("💾 [saveUserMessage] 保存用户消息: sessionID=%s, content=%s", sessionID, req.Content[:min(20, len(req.Content))]+"...")
+
+	// 用户消息没有 tool_calls，不需要传
+	_, err := h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
+		SessionID:  sessionID,
+		Role:       "user",
+		Content:    req.Content,
+		TokenCount: len(req.Content) / 3, // 简单估算
+		ToolCalls:  "",                   // 空字符串，数据库层会处理
+	})
+	if err != nil {
+		log.Printf("❌ [saveUserMessage] 保存失败: %v", err)
+	} else {
+		log.Printf("✅ [saveUserMessage] 保存成功")
+	}
+}
+
+// saveAssistantMessage 保存 AI 回复
+func (h *RAGChatHandler) saveAssistantMessage(ctx context.Context, sessionID string, resp *types.ChatResponse) {
+	if sessionID == "" {
+		return
+	}
+
+	// 序列化 tool_calls
+	var toolCallsJSON string
+	if len(resp.ToolCalls) > 0 {
+		data, _ := json.Marshal(resp.ToolCalls)
+		toolCallsJSON = string(data)
+	}
+
+	h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
+		SessionID:  sessionID,
+		Role:       resp.Role,
+		Content:    resp.Content,
+		ToolCalls:  toolCallsJSON,
+		TokenCount: resp.TokenCount,
+	})
+}
+
+// handleStreamWithSave 处理流式响应并保存完整内容
+func (h *RAGChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, sessionID string, eventChan <-chan types.StreamChatEvent) {
+	sseWriter := chat.NewSSEResponseWriter(c)
+	defer sseWriter.Close()
+
+	// 首先发送 session_id 给前端
+	if sessionID != "" {
+		sessionData := gin.H{"session_id": sessionID}
+		if err := sseWriter.WriteEvent("session", sessionData); err != nil {
+			log.Printf("❌ [handleStreamWithSave] 发送session_id失败: %v", err)
+		}
+	}
+
+	var fullContent string
+	var totalTokenCount int
+	var toolCalls []types.ToolCall
+
+	for event := range eventChan {
+		// 转换并发送事件
+		modelEvent := chat.StreamResponse{
+			Event:      event.Event,
+			Content:    event.Content,
+			MessageID:  event.MessageID,
+			TokenCount: event.TokenCount,
+			ToolCalls:  h.convertToModelToolCalls(event.ToolCalls),
+			Error:      event.Error,
+		}
+
+		// 如果有 RAG 上下文，发送到前端
+		if event.RAGContext != nil {
+			if err := sseWriter.WriteEvent("rag_context", gin.H{"rag_context": event.RAGContext}); err != nil {
+				log.Printf("❌ [handleStreamWithSave] 发送rag_context失败: %v", err)
+			}
+		}
+
+		if err := sseWriter.WriteEvent(event.Event, modelEvent); err != nil {
+			return
+		}
+
+		// 累积内容和 TokenCount
+		if event.Event == "content" {
+			fullContent += event.Content
+			// 累加 TokenCount（如果提供了）
+			if event.TokenCount > 0 {
+				totalTokenCount += event.TokenCount
+			}
+		} else if event.Event == "end" && len(event.ToolCalls) > 0 {
+			toolCalls = event.ToolCalls
+		}
+	}
+
+	// 保存完整的 AI 回复
+	if sessionID != "" && fullContent != "" {
+		var toolCallsJSON string
+		if len(toolCalls) > 0 {
+			data, _ := json.Marshal(toolCalls)
+			toolCallsJSON = string(data)
+		}
+
+		h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
+			SessionID:  sessionID,
+			Role:       "assistant",
+			Content:    fullContent,
+			ToolCalls:  toolCallsJSON,
+			TokenCount: totalTokenCount,
+		})
+	}
+}
+
+// convertToModelToolCalls 转换为模型工具调用
+func (h *RAGChatHandler) convertToModelToolCalls(calls []types.ToolCall) []chat.ToolCall {
+	if calls == nil {
+		return nil
+	}
+
+	result := make([]chat.ToolCall, len(calls))
+	for i, call := range calls {
+		result[i] = chat.ToolCall{
+			ID:   call.ID,
+			Type: call.Type,
+			Function: chat.FunctionCall{
+				Name:      call.Function.Name,
+				Arguments: call.Function.Arguments,
+			},
+		}
+	}
+	return result
+}
+
+// min 返回较小值
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// getTenantIDFromContext 从 context 获取租户 ID
+func getTenantIDFromContext(ctx context.Context) int64 {
+	if tenantID, ok := ctx.Value("tenant_id").(int64); ok {
+		return tenantID
+	}
+	// 从 context.Value 获取可能返回 float64 (JSON 数字)
+	if v := ctx.Value("tenant_id"); v != nil {
+		switch tid := v.(type) {
+		case float64:
+			return int64(tid)
+		case int:
+			return int64(tid)
+		case int64:
+			return tid
+		}
+	}
+	return 1 // 默认租户 ID
+}
 
 // ChatHandler 聊天处理器
 type ChatHandler struct {
@@ -87,9 +471,9 @@ func (h *ChatHandler) Chat(c *gin.Context) {
 	h.saveAssistantMessage(c.Request.Context(), sessionID, resp)
 
 	c.JSON(http.StatusOK, gin.H{
-		"code":    0,
-		"message": "成功",
-		"data":    resp,
+		"code":       0,
+		"message":    "成功",
+		"data":       resp,
 		"session_id": sessionID,
 	})
 }
@@ -125,7 +509,7 @@ func (h *ChatHandler) ChatStream(c *gin.Context) {
 
 	// 获取或创建会话ID
 	sessionID := h.getSessionID(c, req, userID)
-	log.Printf("✅ [ChatStream] 会话ID: %d", sessionID)
+	log.Printf("✅ [ChatStream] 会话ID: %s", sessionID)
 
 	// 保存用户消息
 	h.saveUserMessage(c.Request.Context(), sessionID, &req)
@@ -259,12 +643,35 @@ func (h *ChatHandler) getUserID(c *gin.Context) int64 {
 }
 
 // getSessionID 获取或创建会话ID
-func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID int64) int64 {
-	// 尝试从请求头获取会话ID
+func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID int64) string {
+	// 📊 诊断：打印 context 中的 tenant_id 和 user_id
+	if tenantID, exists := c.Get("tenant_id"); exists {
+		log.Printf("🔍 [getSessionID] Gin Context tenant_id = %v (type: %T)", tenantID, tenantID)
+	} else {
+		log.Printf("⚠️ [getSessionID] Gin Context 中没有 tenant_id")
+	}
+	if uid, exists := c.Get("user_id"); exists {
+		log.Printf("🔍 [getSessionID] Gin Context user_id = %v (type: %T)", uid, uid)
+	} else {
+		log.Printf("⚠️ [getSessionID] Gin Context 中没有 user_id")
+	}
+	// 检查 request.Context() 中的值
+	if ctxTenantID := c.Request.Context().Value("tenant_id"); ctxTenantID != nil {
+		log.Printf("🔍 [getSessionID] Request.Context tenant_id = %v (type: %T)", ctxTenantID, ctxTenantID)
+	} else {
+		log.Printf("⚠️ [getSessionID] Request.Context 中没有 tenant_id")
+	}
+
+	// 优先从请求体获取会话ID
+	if req.SessionID != "" {
+		log.Printf("📌 [getSessionID] 从请求体获取会话ID: %s", req.SessionID)
+		return req.SessionID
+	}
+
+	// 其次尝试从请求头获取会话ID（兼容旧版）
 	if sessionID := c.GetHeader("X-Session-ID"); sessionID != "" {
-		id := int64(parseInt(sessionID))
-		log.Printf("📌 [getSessionID] 从请求头获取会话ID: %d", id)
-		return id
+		log.Printf("📌 [getSessionID] 从请求头获取会话ID: %s", sessionID)
+		return sessionID
 	}
 
 	// 如果没有会话ID，创建新会话
@@ -272,34 +679,32 @@ func (h *ChatHandler) getSessionID(c *gin.Context, req types.ChatRequest, userID
 	session, err := h.sessionService.CreateSession(c.Request.Context(), userID, &types.CreateSessionRequest{
 		Title:       generateSessionTitle(req.Content),
 		Description: "自动创建的会话",
-		Model:       "gpt-3.5-turbo",
-		MaxRounds:   50,
 	})
 	if err != nil {
 		log.Printf("❌ [getSessionID] 创建会话失败: %v", err)
-		return 0 // 创建失败返回0
+		return "" // 创建失败返回空字符串
 	}
 
-	log.Printf("✅ [getSessionID] 新会话创建成功: ID=%d", session.ID)
+	log.Printf("✅ [getSessionID] 新会话创建成功: ID=%s, TenantID=%d, UserID=%d", session.ID, session.TenantID, session.UserID)
 	return session.ID
 }
 
 // saveUserMessage 保存用户消息
-func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID int64, req *types.ChatRequest) {
-	if sessionID == 0 {
-		log.Printf("⚠️ [saveUserMessage] sessionID 为 0，跳过保存")
+func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID string, req *types.ChatRequest) {
+	if sessionID == "" {
+		log.Printf("⚠️ [saveUserMessage] sessionID 为空，跳过保存")
 		return
 	}
 
-	log.Printf("💾 [saveUserMessage] 保存用户消息: sessionID=%d, content=%s", sessionID, req.Content[:min(20, len(req.Content))]+"...")
+	log.Printf("💾 [saveUserMessage] 保存用户消息: sessionID=%s, content=%s", sessionID, req.Content[:min(20, len(req.Content))]+"...")
 
 	// 用户消息没有 tool_calls，不需要传
 	_, err := h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
-		ChatID:     sessionID,
+		SessionID:  sessionID,
 		Role:       "user",
 		Content:    req.Content,
 		TokenCount: len(req.Content) / 3, // 简单估算
-		ToolCalls:  "", // 空字符串，数据库层会处理
+		ToolCalls:  "",                   // 空字符串，数据库层会处理
 	})
 	if err != nil {
 		log.Printf("❌ [saveUserMessage] 保存失败: %v", err)
@@ -309,8 +714,8 @@ func (h *ChatHandler) saveUserMessage(ctx context.Context, sessionID int64, req 
 }
 
 // saveAssistantMessage 保存 AI 回复
-func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID int64, resp *types.ChatResponse) {
-	if sessionID == 0 {
+func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID string, resp *types.ChatResponse) {
+	if sessionID == "" {
 		return
 	}
 
@@ -322,7 +727,7 @@ func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID int64,
 	}
 
 	h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
-		ChatID:     sessionID,
+		SessionID:  sessionID,
 		Role:       resp.Role,
 		Content:    resp.Content,
 		ToolCalls:  toolCallsJSON,
@@ -331,9 +736,17 @@ func (h *ChatHandler) saveAssistantMessage(ctx context.Context, sessionID int64,
 }
 
 // handleStreamWithSave 处理流式响应并保存完整内容
-func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, sessionID int64, eventChan <-chan types.StreamChatEvent) {
+func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, sessionID string, eventChan <-chan types.StreamChatEvent) {
 	sseWriter := chat.NewSSEResponseWriter(c)
 	defer sseWriter.Close()
+
+	// 首先发送 session_id 给前端
+	if sessionID != "" {
+		sessionData := gin.H{"session_id": sessionID}
+		if err := sseWriter.WriteEvent("session", sessionData); err != nil {
+			log.Printf("❌ [handleStreamWithSave] 发送session_id失败: %v", err)
+		}
+	}
 
 	var fullContent string
 	var totalTokenCount int
@@ -354,17 +767,20 @@ func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, 
 			return
 		}
 
-		// 累积内容
+		// 累积内容和 TokenCount
 		if event.Event == "content" {
 			fullContent += event.Content
-			totalTokenCount = event.TokenCount
+			// 累加 TokenCount（如果提供了）
+			if event.TokenCount > 0 {
+				totalTokenCount += event.TokenCount
+			}
 		} else if event.Event == "end" && len(event.ToolCalls) > 0 {
 			toolCalls = event.ToolCalls
 		}
 	}
 
 	// 保存完整的 AI 回复
-	if sessionID > 0 && fullContent != "" {
+	if sessionID != "" && fullContent != "" {
 		var toolCallsJSON string
 		if len(toolCalls) > 0 {
 			data, _ := json.Marshal(toolCalls)
@@ -372,7 +788,7 @@ func (h *ChatHandler) handleStreamWithSave(ctx context.Context, c *gin.Context, 
 		}
 
 		h.messageService.CreateMessage(ctx, &types.CreateMessageRequest{
-			ChatID:     sessionID,
+			SessionID:  sessionID,
 			Role:       "assistant",
 			Content:    fullContent,
 			ToolCalls:  toolCallsJSON,

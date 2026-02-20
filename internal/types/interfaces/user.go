@@ -13,11 +13,17 @@ type UserRepository interface {
 	// FindByID 根据ID查找用户
 	FindByID(ctx context.Context, id int64) (*types.User, error)
 
-	// FindByEmail 根据邮箱查找用户
-	FindByEmail(ctx context.Context, email string) (*types.User, error)
+	// FindByEmail 根据邮箱查找用户（需要租户ID）
+	FindByEmail(ctx context.Context, tenantID int64, email string) (*types.User, error)
 
-	// FindByUsername 根据用户名查找用户
-	FindByUsername(ctx context.Context, username string) (*types.User, error)
+	// FindByEmailOnly 仅根据邮箱查找用户（不指定租户，用于登录时自动获取租户ID）
+	FindByEmailOnly(ctx context.Context, email string) (*types.User, error)
+
+	// FindByUsername 根据用户名查找用户（需要租户ID）
+	FindByUsername(ctx context.Context, tenantID int64, username string) (*types.User, error)
+
+	// FindByTenantID 根据租户ID查找用户列表
+	FindByTenantID(ctx context.Context, tenantID int64, page, pageSize int) ([]*types.User, int64, error)
 
 	// Update 更新用户
 	Update(ctx context.Context, user *types.User) error
@@ -28,8 +34,8 @@ type UserRepository interface {
 	// Delete 删除用户
 	Delete(ctx context.Context, id int64) error
 
-	// List 分页查询用户列表
-	List(ctx context.Context, page, pageSize int) ([]*types.User, int64, error)
+	// List 分页查询用户列表（需要租户ID）
+	List(ctx context.Context, tenantID int64, page, pageSize int) ([]*types.User, int64, error)
 }
 
 // RefreshTokenRepository 刷新Token数据访问接口

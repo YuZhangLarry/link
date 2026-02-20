@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"link/internal/agent"
 	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
-	"link/internal/agent/tool"
 	"link/internal/config"
 	"link/internal/models/chat"
 	"link/internal/types"
@@ -17,7 +17,7 @@ import (
 // ChatService 聊天服务
 type ChatService struct {
 	chatConfig *config.ChatConfig
-	agent      *tool.Agent
+	agent      *agent.Agent
 	enableTool bool
 }
 
@@ -30,7 +30,7 @@ func NewChatService(chatConfig *config.ChatConfig) *ChatService {
 }
 
 // NewChatServiceWithAgent 创建带 Agent 的聊天服务
-func NewChatServiceWithAgent(chatConfig *config.ChatConfig, agent *tool.Agent) *ChatService {
+func NewChatServiceWithAgent(chatConfig *config.ChatConfig, agent *agent.Agent) *ChatService {
 	return &ChatService{
 		chatConfig: chatConfig,
 		agent:      agent,
@@ -39,7 +39,7 @@ func NewChatServiceWithAgent(chatConfig *config.ChatConfig, agent *tool.Agent) *
 }
 
 // SetAgent 设置 Agent
-func (s *ChatService) SetAgent(agent *tool.Agent) {
+func (s *ChatService) SetAgent(agent *agent.Agent) {
 	s.agent = agent
 	s.enableTool = true
 }
@@ -62,32 +62,9 @@ func (s *ChatService) Chat(ctx context.Context, req *types.ChatRequest) (*types.
 
 // chatWithAgent 使用 Agent 进行聊天（支持工具调用）
 func (s *ChatService) chatWithAgent(ctx context.Context, req *types.ChatRequest) (*types.ChatResponse, error) {
-	// 转换消息格式为 Eino 格式
-	messages := s.convertToEinoMessages(req.History, req.Content)
-
-	// 转换选项
-	opts := s.convertToEinoOptions(req.Options)
-
-	// 使用 Agent 进行对话
-	resp, err := s.agent.Chat(ctx, messages, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("agent chat failed: %w", err)
-	}
-
-	// 转换响应
-	toolCallPtrs := make([]*schema.ToolCall, len(resp.ToolCalls))
-	for i := range resp.ToolCalls {
-		toolCallPtrs[i] = &resp.ToolCalls[i]
-	}
-
-	return &types.ChatResponse{
-		MessageID:    generateMessageID(),
-		Content:      resp.Content,
-		Role:         string(resp.Role),
-		TokenCount:   0, // 需要从 resp 中获取
-		ToolCalls:    convertEinoToolCalls(toolCallPtrs),
-		FinishReason: "stop",
-	}, nil
+	// TODO: 集成新的 Agent 架构
+	// 暂时回退到普通聊天
+	return s.chatNormal(ctx, req)
 }
 
 // chatNormal 普通聊天（不使用工具）

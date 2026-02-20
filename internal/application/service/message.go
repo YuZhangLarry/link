@@ -9,7 +9,7 @@ import (
 	"link/internal/types/interfaces"
 )
 
-// MessageService 消息服务实现
+// MessageService 消息服务实现 - 多租户版本
 type MessageService struct {
 	messageRepo interfaces.MessageRepository
 }
@@ -33,17 +33,8 @@ func (s *MessageService) CreateMessage(ctx context.Context, req *types.CreateMes
 		return nil, errors.New("消息内容不能为空")
 	}
 
-	// 创建消息实体
-	message := &types.MessageEntity{
-		ChatID:     req.ChatID,
-		Role:       req.Role,
-		Content:    req.Content,
-		ToolCalls:  req.ToolCalls,
-		TokenCount: req.TokenCount,
-	}
-
-	// 保存到数据库
-	err := s.messageRepo.Create(ctx, message)
+	// 调用仓储创建消息
+	message, err := s.messageRepo.Create(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("创建消息失败: %w", err)
 	}
@@ -53,7 +44,7 @@ func (s *MessageService) CreateMessage(ctx context.Context, req *types.CreateMes
 }
 
 // GetMessageByID 根据ID获取消息
-func (s *MessageService) GetMessageByID(ctx context.Context, id int64) (*types.MessageResponse, error) {
+func (s *MessageService) GetMessageByID(ctx context.Context, id string) (*types.MessageResponse, error) {
 	message, err := s.messageRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -80,9 +71,9 @@ func (s *MessageService) ListMessages(ctx context.Context, req *types.ListMessag
 
 	// 根据是否按角色筛选选择不同的查询方法
 	if req.Role != "" {
-		messages, total, err = s.messageRepo.FindByChatIDAndRole(ctx, req.ChatID, req.Role, page, size)
+		messages, total, err = s.messageRepo.FindBySessionIDAndRole(ctx, req.SessionID, req.Role, page, size)
 	} else {
-		messages, total, err = s.messageRepo.FindByChatID(ctx, req.ChatID, page, size)
+		messages, total, err = s.messageRepo.FindBySessionID(ctx, req.SessionID, page, size)
 	}
 
 	if err != nil {
@@ -90,9 +81,9 @@ func (s *MessageService) ListMessages(ctx context.Context, req *types.ListMessag
 	}
 
 	// 转换为响应格式
-	messageResponses := make([]types.MessageResponse, 0, len(messages))
+	messageResponses := make([]*types.MessageResponse, 0, len(messages))
 	for _, msg := range messages {
-		messageResponses = append(messageResponses, *s.toMessageResponse(msg))
+		messageResponses = append(messageResponses, s.toMessageResponse(msg))
 	}
 
 	return &types.MessageListResponse{
@@ -104,28 +95,30 @@ func (s *MessageService) ListMessages(ctx context.Context, req *types.ListMessag
 }
 
 // UpdateMessage 更新消息
-func (s *MessageService) UpdateMessage(ctx context.Context, id int64, req *types.UpdateMessageRequest) (*types.MessageResponse, error) {
+func (s *MessageService) UpdateMessage(ctx context.Context, id string, req *types.UpdateMessageRequest) (*types.MessageResponse, error) {
 	// 查找消息
 	message, err := s.messageRepo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 更新字段
-	message.Content = req.Content
-	message.TokenCount = req.TokenCount
-
-	// 保存更新
-	err = s.messageRepo.Update(ctx, message)
+	// 更新
+	err = s.messageRepo.Update(ctx, id, req)
 	if err != nil {
 		return nil, fmt.Errorf("更新消息失败: %w", err)
+	}
+
+	// 重新获取更新后的消息
+	message, err = s.messageRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 
 	return s.toMessageResponse(message), nil
 }
 
 // DeleteMessage 删除消息
-func (s *MessageService) DeleteMessage(ctx context.Context, id int64) error {
+func (s *MessageService) DeleteMessage(ctx context.Context, id string) error {
 	err := s.messageRepo.Delete(ctx, id)
 	if err != nil {
 		return fmt.Errorf("删除消息失败: %w", err)
@@ -133,11 +126,11 @@ func (s *MessageService) DeleteMessage(ctx context.Context, id int64) error {
 	return nil
 }
 
-// DeleteMessagesByChatID 删除对话的所有消息
-func (s *MessageService) DeleteMessagesByChatID(ctx context.Context, chatID int64) error {
-	err := s.messageRepo.DeleteByChatID(ctx, chatID)
+// DeleteMessagesBySessionID 删除会话的所有消息
+func (s *MessageService) DeleteMessagesBySessionID(ctx context.Context, sessionID string) error {
+	err := s.messageRepo.DeleteBySessionID(ctx, sessionID)
 	if err != nil {
-		return fmt.Errorf("删除对话消息失败: %w", err)
+		return fmt.Errorf("删除会话消息失败: %w", err)
 	}
 	return nil
 }
@@ -145,12 +138,16 @@ func (s *MessageService) DeleteMessagesByChatID(ctx context.Context, chatID int6
 // toMessageResponse 转换为消息响应格式
 func (s *MessageService) toMessageResponse(message *types.MessageEntity) *types.MessageResponse {
 	return &types.MessageResponse{
-		ID:         message.ID,
-		ChatID:     message.ChatID,
-		Role:       message.Role,
-		Content:    message.Content,
-		ToolCalls:  message.ToolCalls,
-		TokenCount: message.TokenCount,
-		CreatedAt:  message.CreatedAt,
+		ID:                  message.ID,
+		RequestID:           message.RequestID,
+		SessionID:           message.SessionID,
+		Role:                message.Role,
+		Content:             message.Content,
+		KnowledgeReferences: message.KnowledgeReferences,
+		AgentSteps:          message.AgentSteps,
+		ToolCalls:           message.ToolCalls,
+		IsCompleted:         message.IsCompleted,
+		TokenCount:          message.TokenCount,
+		CreatedAt:           message.CreatedAt,
 	}
 }
